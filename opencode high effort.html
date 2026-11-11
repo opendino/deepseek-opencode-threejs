@@ -1,0 +1,2895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#020306" />
+<meta name="description" content="A stormy ocean suspended inside a floating glass cube. A real-time, code-generated Three.js artwork." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23020408'/%3E%3Cpath d='M3 19c4-6 8 6 13 0s9 6 13 0' stroke='%239fd3d2' fill='none' stroke-width='1.6'/%3E%3C/svg%3E" />
+<title>Storm in Glass</title>
+<style>
+  :root{
+    --bone:#e9e4da;
+    --muted:rgba(233,228,218,.46);
+    --faint:rgba(233,228,218,.18);
+    --sun:#f4c38b;
+    --cold:#8ab7ca;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ width:100%; height:100%; margin:0; overflow:hidden; background:#020306; }
+  body{
+    font-family:"Helvetica Neue", Helvetica, Arial, sans-serif;
+    color:var(--bone);
+    -webkit-font-smoothing:antialiased;
+    cursor:default;
+    touch-action:none;
+  }
+  #scene{ position:fixed; inset:0; }
+  #scene canvas{ display:block; width:100%; height:100%; cursor:grab; }
+  #scene canvas:active{ cursor:grabbing; }
+
+  .vignette, .depth, .flash, .grain{
+    position:fixed; inset:0; pointer-events:none;
+  }
+  .vignette{
+    background:
+      radial-gradient(ellipse at 50% 44%, rgba(0,0,0,0) 28%, rgba(0,0,0,.24) 58%, rgba(0,0,0,.74) 100%),
+      linear-gradient(180deg, rgba(0,0,0,.24), transparent 24%, transparent 76%, rgba(0,0,0,.44));
+    z-index:4;
+  }
+  .depth{
+    z-index:3;
+    opacity:0;
+    transition:opacity 2.4s ease;
+    background:
+      radial-gradient(ellipse at 50% 58%, rgba(12,96,112,.02) 0%, rgba(4,42,62,.22) 48%, rgba(1,11,21,.68) 100%),
+      linear-gradient(180deg, rgba(30,108,125,.16), rgba(1,17,30,.3));
+  }
+  body.underwater .depth{ opacity:1; }
+  .flash{
+    z-index:5;
+    opacity:0;
+    background:
+      radial-gradient(ellipse at 52% 28%, rgba(225,240,255,.92), rgba(144,190,230,.32) 26%, transparent 66%),
+      linear-gradient(180deg, rgba(171,210,243,.26), transparent 55%);
+    mix-blend-mode:screen;
+  }
+  .grain{
+    z-index:6;
+    opacity:.2;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.11'/%3E%3C/svg%3E");
+    mix-blend-mode:overlay;
+  }
+
+  #veil{
+    position:fixed; inset:0; z-index:20; background:#010204;
+    pointer-events:none;
+    transition:opacity 2.1s cubic-bezier(.4,0,.2,1);
+  }
+  #veil.lifted{ opacity:0; }
+
+  .brand{
+    position:fixed; top:29px; left:32px; z-index:10;
+    pointer-events:none;
+    opacity:.72;
+    letter-spacing:.24em;
+    text-transform:uppercase;
+  }
+  .brand-title{
+    font-size:10px; line-height:1; font-weight:500; letter-spacing:.3em;
+    color:rgba(243,238,228,.86);
+  }
+  .brand-title i{ font-style:normal; color:rgba(244,195,139,.78); }
+  .brand-sub{
+    margin-top:9px; font-size:7.5px; line-height:1; letter-spacing:.34em; color:var(--muted);
+  }
+  .brand-rule{
+    width:22px; height:1px; background:rgba(244,195,139,.4); margin:11px 0 9px;
+  }
+
+  #reset{
+    position:fixed; top:26px; right:30px; z-index:10;
+    display:flex; align-items:center; gap:9px;
+    background:none; border:0; color:rgba(233,228,218,.55);
+    font:inherit; font-size:8.5px; letter-spacing:.24em; text-transform:uppercase;
+    padding:7px 0; cursor:pointer;
+    transition:color .35s ease, opacity .35s ease;
+    opacity:.8;
+  }
+  #reset:hover{ color:rgba(244,195,139,.92); }
+  #reset .ico{
+    width:19px; height:19px; display:grid; place-items:center;
+    border:1px solid rgba(233,228,218,.2); border-radius:50%;
+    font-size:12px; line-height:1; padding-top:0;
+    transition:transform .6s cubic-bezier(.2,.8,.2,1), border-color .35s ease;
+  }
+  #reset:hover .ico{ transform:rotate(-180deg); border-color:rgba(244,195,139,.55); }
+
+  #weather{
+    position:fixed; left:50%; bottom:30px; transform:translateX(-50%);
+    z-index:10; width:240px;
+    user-select:none;
+  }
+  .weather-head{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:7.5px; letter-spacing:.32em; text-transform:uppercase;
+    color:rgba(233,228,218,.4);
+    margin-bottom:10px;
+  }
+  .weather-head .dot{
+    width:3px; height:3px; border-radius:50%; background:rgba(244,195,139,.72);
+    box-shadow:0 0 8px rgba(244,195,139,.8);
+    transition:background .5s ease, box-shadow .5s ease;
+  }
+  #weather-range{
+    -webkit-appearance:none; appearance:none;
+    display:block; width:100%; height:18px; margin:0; padding:0;
+    background:transparent; cursor:pointer; outline:none;
+  }
+  #weather-range::-webkit-slider-runnable-track{
+    width:100%; height:1px;
+    background:linear-gradient(90deg, rgba(244,195,139,.72), rgba(244,195,139,.28) 42%, rgba(120,161,184,.38) 68%, rgba(117,162,187,.18));
+    box-shadow:0 0 12px rgba(244,195,139,.14);
+  }
+  #weather-range::-moz-range-track{
+    width:100%; height:1px;
+    background:linear-gradient(90deg, rgba(244,195,139,.72), rgba(244,195,139,.28) 42%, rgba(120,161,184,.38) 68%, rgba(117,162,187,.18));
+  }
+  #weather-range::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:11px; height:11px; margin-top:-5px; border-radius:50%;
+    background:rgba(244,230,209,.96);
+    border:1px solid rgba(255,244,226,.85);
+    box-shadow:0 0 0 4px rgba(244,195,139,.08), 0 0 15px rgba(244,195,139,.5);
+    transition:transform .25s ease, box-shadow .3s ease;
+  }
+  #weather-range:hover::-webkit-slider-thumb{
+    transform:scale(1.25);
+    box-shadow:0 0 0 5px rgba(244,195,139,.11), 0 0 22px rgba(244,195,139,.65);
+  }
+  #weather-range::-moz-range-thumb{
+    width:11px; height:11px; border-radius:50%;
+    background:rgba(244,230,209,.96);
+    border:1px solid rgba(255,244,226,.85);
+    box-shadow:0 0 0 4px rgba(244,195,139,.08), 0 0 15px rgba(244,195,139,.5);
+  }
+  .weather-ends{
+    display:flex; justify-content:space-between;
+    margin-top:7px;
+    font-size:7px; letter-spacing:.26em; text-transform:uppercase;
+    color:rgba(233,228,218,.32);
+  }
+  .weather-ends span:last-child{ color:rgba(138,183,202,.5); }
+
+  #hint{
+    position:fixed; left:32px; bottom:33px; z-index:10;
+    pointer-events:none; font-size:7.5px; line-height:1.7;
+    letter-spacing:.25em; text-transform:uppercase;
+    color:rgba(233,228,218,.34);
+    transition:opacity 1.2s ease;
+    white-space:nowrap;
+  }
+  #hint b{ font-weight:400; color:rgba(233,228,218,.55); }
+  #hint .sep{ color:rgba(244,195,139,.55); margin:0 7px; }
+  #hint.hidden{ opacity:0; }
+  body.underwater #hint{ opacity:0; }
+
+  @media (max-width:720px){
+    .brand{ top:20px; left:20px; }
+    .brand-sub{ display:none; }
+    #reset{ top:17px; right:18px; }
+    #reset .label{ display:none; }
+    #weather{ bottom:22px; width:200px; }
+    #hint{ left:20px; bottom:70px; max-width:190px; font-size:6.5px; white-space:normal; }
+  }
+  @media (max-width:430px){
+    #weather{ width:176px; }
+    .brand-title{ font-size:9px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #veil{ transition-duration:.2s; }
+    #reset .ico{ transition:none; }
+  }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div class="depth"></div>
+<div class="vignette"></div>
+<div class="flash" id="flash"></div>
+<div class="grain"></div>
+
+<div class="brand">
+  <div class="brand-title">Storm <i>/</i> In Glass</div>
+  <div class="brand-rule"></div>
+  <div class="brand-sub">An ocean study in miniature</div>
+</div>
+
+<button id="reset" aria-label="Reset view">
+  <span class="ico">↺</span><span class="label">Reset view</span>
+</button>
+
+<div id="weather">
+  <div class="weather-head"><span>Weather</span><span class="dot" id="weather-dot"></span></div>
+  <input id="weather-range" type="range" min="0" max="1" step="0.001" value="0.16" aria-label="Weather: sunrise to midnight storm" />
+  <div class="weather-ends"><span>Sunrise</span><span>Midnight</span></div>
+</div>
+
+<div id="hint"><b>Drag</b> to orbit<span class="sep">/</span><b>Click the whale</b> to dive</div>
+
+<div id="veil"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+
+/* -------------------------------------------------------------------------- */
+/*  A storm inside a glass cube.                                              */
+/*  Everything below is generated: geometry, GLSL, noise, textures.           */
+/* -------------------------------------------------------------------------- */
+
+const container = document.getElementById('scene');
+const isCoarse = window.matchMedia('(pointer: coarse)').matches;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  powerPreference: 'high-performance',
+  alpha: false
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isCoarse ? 1.5 : 1.85));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020307);
+
+function portraitFactor() {
+  const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+  return THREE.MathUtils.clamp((1.0 - aspect) / 0.55, 0, 1);
+}
+function responsiveFov(base) {
+  return base + portraitFactor() * 23;
+}
+
+const camera = new THREE.PerspectiveCamera(responsiveFov(33), window.innerWidth / window.innerHeight, 0.08, 180);
+
+const CUBE = 9.6;
+const HALF = CUBE / 2;
+const WATER_MEAN = 3.96;
+const CUBE_BOTTOM = -HALF;
+const FLOOR_Y = -6.55;
+
+const HERO = {
+  position: new THREE.Vector3(15.5, 10.35, 19.15),
+  target: new THREE.Vector3(0, 0.55, 0),
+  fov: 33
+};
+function heroView() {
+  const scale = 1 + portraitFactor() * 0.32;
+  const position = HERO.target.clone()
+    .add(HERO.position.clone().sub(HERO.target).multiplyScalar(scale));
+  return { position, target: HERO.target.clone(), fov: responsiveFov(HERO.fov) };
+}
+
+const initialView = heroView();
+camera.position.copy(initialView.position);
+camera.fov = initialView.fov;
+camera.updateProjectionMatrix();
+camera.lookAt(initialView.target);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(initialView.target);
+controls.enableDamping = true;
+controls.dampingFactor = 0.055;
+controls.enablePan = false;
+controls.rotateSpeed = 0.48;
+controls.zoomSpeed = 0.65;
+controls.minDistance = 8.5;
+controls.maxDistance = 39;
+controls.minPolarAngle = 0.2;
+controls.maxPolarAngle = 1.61;
+controls.update();
+
+/* -------------------------------------------------------------------------- */
+/*  Weather state                                                             */
+/* -------------------------------------------------------------------------- */
+
+let targetStorm = 0.16;
+let storm = 0.16;
+let oceanTime = 0;
+let elapsed = 0;
+let lightningFlash = 0;
+let lightningTimer = 7.5;
+let lightningAge = 99;
+let pointerActive = false;
+let lastInteraction = -1e9;
+
+const slider = document.getElementById('weather-range');
+const weatherDot = document.getElementById('weather-dot');
+slider.addEventListener('input', () => {
+  targetStorm = parseFloat(slider.value);
+});
+
+function smootherstep(x) {
+  x = THREE.MathUtils.clamp(x, 0, 1);
+  return x * x * x * (x * (x * 6 - 15) + 10);
+}
+
+function mix(a, b, t) { return a + (b - a) * t; }
+function clamp(x, a, b) { return Math.min(b, Math.max(a, x)); }
+function smoothstep(min, max, x) {
+  const t = clamp((x - min) / (max - min), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Palettes                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const PAL = {
+  dawn: {
+    skyTop: new THREE.Color(0x02060d),
+    skyHorizon: new THREE.Color(0x0d0908),
+    cloud: new THREE.Color(0x0b151d),
+    sun: new THREE.Color(0xffcf9b),
+    deep: new THREE.Color(0x031927),
+    mid: new THREE.Color(0x073c53),
+    shallow: new THREE.Color(0x2a9992),
+    foam: new THREE.Color(0xffefd3),
+    glow: new THREE.Color(0x6be4d8),
+    glass: new THREE.Color(0x9fc5ca),
+    shaft: new THREE.Color(0xa9d4d3),
+    underA: new THREE.Color(0x67e6d7),
+    underB: new THREE.Color(0xffb06e),
+    rim: new THREE.Color(0x8fb8c4)
+  },
+  storm: {
+    skyTop: new THREE.Color(0x000104),
+    skyHorizon: new THREE.Color(0x02060c),
+    cloud: new THREE.Color(0x07111b),
+    sun: new THREE.Color(0x68879c),
+    deep: new THREE.Color(0x01050a),
+    mid: new THREE.Color(0x031724),
+    shallow: new THREE.Color(0x134957),
+    foam: new THREE.Color(0xd2e2e9),
+    glow: new THREE.Color(0x338ea1),
+    glass: new THREE.Color(0x688398),
+    shaft: new THREE.Color(0x8fb9c9),
+    underA: new THREE.Color(0x349cad),
+    underB: new THREE.Color(0x477c94),
+    rim: new THREE.Color(0x5f7c93)
+  }
+};
+
+const palette = {};
+for (const key of Object.keys(PAL.dawn)) {
+  palette[key] = new THREE.Color();
+}
+const tmpColor = new THREE.Color();
+
+function updatePalette(s) {
+  const k = smootherstep(s);
+  for (const key of Object.keys(PAL.dawn)) {
+    palette[key].copy(PAL.dawn[key]).lerp(PAL.storm[key], k);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  A small procedural environment for metal / glass reflections              */
+/* -------------------------------------------------------------------------- */
+
+function makeEnvironment() {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0.0, '#03060c');
+  g.addColorStop(0.43, '#081926');
+  g.addColorStop(0.54, '#4b3024');
+  g.addColorStop(0.61, '#0a1118');
+  g.addColorStop(1.0, '#010203');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 256);
+
+  const sun = ctx.createRadialGradient(385, 126, 0, 385, 126, 92);
+  sun.addColorStop(0, 'rgba(255,216,164,.95)');
+  sun.addColorStop(0.1, 'rgba(255,181,116,.48)');
+  sun.addColorStop(0.45, 'rgba(150,92,55,.12)');
+  sun.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sun;
+  ctx.fillRect(270, 30, 240, 210);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const rt = pmrem.fromEquirectangular(tex);
+  scene.environment = rt.texture;
+  tex.dispose();
+  pmrem.dispose();
+}
+makeEnvironment();
+
+/* -------------------------------------------------------------------------- */
+/*  Sky                                                                       */
+/* -------------------------------------------------------------------------- */
+
+const skyUniforms = {
+  uTime: { value: 0 },
+  uStorm: { value: storm },
+  uSunDir: { value: new THREE.Vector3(-0.62, 0.44, -0.65).normalize() },
+  uSkyTop: { value: new THREE.Color() },
+  uSkyHorizon: { value: new THREE.Color() },
+  uCloud: { value: new THREE.Color() },
+  uSunColor: { value: new THREE.Color() },
+  uFlash: { value: 0 }
+};
+
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(78, 48, 28),
+  new THREE.ShaderMaterial({
+    uniforms: skyUniforms,
+    side: THREE.BackSide,
+    depthWrite: false,
+    vertexShader: /* glsl */`
+      varying vec3 vDir;
+      void main(){
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform float uTime;
+      uniform float uStorm;
+      uniform float uFlash;
+      uniform vec3 uSunDir;
+      uniform vec3 uSkyTop;
+      uniform vec3 uSkyHorizon;
+      uniform vec3 uCloud;
+      uniform vec3 uSunColor;
+      varying vec3 vDir;
+
+      float hash(vec2 p){
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+      float noise(vec2 p){
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+      float fbm(vec2 p){
+        float v = 0.0, a = 0.52;
+        mat2 rot = mat2(0.82, -0.57, 0.57, 0.82);
+        for(int i=0;i<5;i++){
+          v += a * noise(p);
+          p = rot * p * 2.03 + 13.7;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      void main(){
+        vec3 d = normalize(vDir);
+        float h = clamp(d.y, 0.0, 1.0);
+
+        vec3 col = mix(uSkyHorizon, uSkyTop, smoothstep(-0.02, 0.66, h));
+
+        float sunDot = max(dot(d, normalize(uSunDir)), 0.0);
+        float disc = pow(sunDot, 780.0);
+        float halo = pow(sunDot, 24.0) * 0.58 + pow(sunDot, 120.0) * 0.36;
+        float horizonMask = smoothstep(0.02, 0.2, d.y);
+        col += uSunColor * (disc * 2.1 + halo * 0.16) * horizonMask;
+
+        // Cloud cover: wispy at sunrise, heavy and slow at midnight.
+        float az = atan(d.z, d.x);
+        vec2 uv = vec2(az * 2.1, d.y * 5.4 - 0.4);
+        float n = fbm(uv + vec2(uTime * 0.004, uTime * 0.002));
+        float n2 = fbm(uv * 2.15 - vec2(uTime * 0.008, 0.0));
+        float cloudMask = smoothstep(0.31, 0.82, n * 0.74 + n2 * 0.36);
+        float band = smoothstep(0.01, 0.42, d.y) * (1.0 - smoothstep(0.62, 1.0, d.y));
+        col = mix(col, uCloud, cloudMask * mix(0.06, 0.48, uStorm) * band);
+
+        // a faint horizon breath in the calm
+        float low = exp(-pow((d.y - 0.02) * 13.0, 2.0));
+        col += uSunColor * low * (1.0 - uStorm) * 0.055;
+
+        // lightning fills the cloud ceiling, not the entire frame
+        col += vec3(0.48, 0.66, 0.85) * uFlash * (0.14 + cloudMask * 0.7) * smoothstep(-0.05, 0.4, d.y);
+
+        // subtle dither
+        col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `
+  })
+);
+sky.frustumCulled = false;
+scene.add(sky);
+
+/* -------------------------------------------------------------------------- */
+/*  Lights                                                                    */
+/* -------------------------------------------------------------------------- */
+
+const hemi = new THREE.HemisphereLight(0x9bc8d7, 0x04060a, 0.48);
+scene.add(hemi);
+
+const sunLight = new THREE.DirectionalLight(0xffd0a0, 2.2);
+const sunDir = new THREE.Vector3(-0.62, 0.44, -0.65).normalize();
+sunLight.position.copy(sunDir).multiplyScalar(24);
+sunLight.target.position.set(0, 0, 0);
+scene.add(sunLight, sunLight.target);
+
+const frontFill = new THREE.DirectionalLight(0x73a5bd, 0.55);
+frontFill.position.set(10, 6, 14);
+scene.add(frontFill);
+
+const stormRim = new THREE.DirectionalLight(0x87aeca, 0.8);
+stormRim.position.set(-12, 8, 9);
+scene.add(stormRim);
+
+const underLightA = new THREE.PointLight(0x64e0d1, 38, 13, 2);
+underLightA.position.set(0.1, -0.65, 1.2);
+scene.add(underLightA);
+
+const underLightB = new THREE.PointLight(0xffb06e, 20, 11, 2);
+underLightB.position.set(-2.9, 1.3, -2.6);
+scene.add(underLightB);
+
+const deepLight = new THREE.PointLight(0x1c6f8d, 40, 10, 2);
+deepLight.position.set(2.8, -3.5, -2.7);
+scene.add(deepLight);
+
+const whaleFill = new THREE.PointLight(0x9adfe2, 55, 9, 2);
+whaleFill.position.set(2.4, -1.4, 2.7);
+scene.add(whaleFill);
+
+const lightningLight = new THREE.DirectionalLight(0xcfe8ff, 0);
+lightningLight.position.set(-5, 22, -18);
+scene.add(lightningLight);
+
+/* -------------------------------------------------------------------------- */
+/*  Wave model — shared by the vertex shader and CPU-side ship sampling       */
+/* -------------------------------------------------------------------------- */
+
+const WAVES = [
+  { dx: 0.94, dz: 0.34, wavelength: 6.90, amp: 0.220, phase: 0.20, speed: 0.62 },
+  { dx: -0.55, dz: 1.00, wavelength: 4.35, amp: 0.136, phase: 1.80, speed: 0.83 },
+  { dx: 0.80, dz: -0.70, wavelength: 2.90, amp: 0.086, phase: 4.10, speed: 1.07 },
+  { dx: -1.00, dz: 0.20, wavelength: 1.75, amp: 0.050, phase: 2.20, speed: 1.36 },
+  { dx: 0.25, dz: 1.00, wavelength: 1.06, amp: 0.027, phase: 5.30, speed: 1.74 }
+].map(w => {
+  const len = Math.hypot(w.dx, w.dz);
+  return { ...w, dx: w.dx / len, dz: w.dz / len, k: Math.PI * 2 / w.wavelength };
+});
+
+const WAVE_AMP_CALM = 0.44;
+const WAVE_AMP_STORM = 1.50;
+
+function waveAmpScale(s) {
+  return mix(WAVE_AMP_CALM, WAVE_AMP_STORM, smootherstep(s));
+}
+
+function rawWaveHeight(x, z, t) {
+  let h = 0;
+  for (let i = 0; i < WAVES.length; i++) {
+    const w = WAVES[i];
+    h += w.amp * Math.sin((w.dx * x + w.dz * z) * w.k + t * w.speed + w.phase);
+  }
+  return h;
+}
+
+function surfaceHeight(x, z, t = oceanTime) {
+  return WATER_MEAN + rawWaveHeight(x, z, t) * waveAmpScale(storm);
+}
+
+const waveGLSL = WAVES.map(w => {
+  return `h += ${w.amp.toFixed(5)} * sin(dot(vec2(${w.dx.toFixed(5)}, ${w.dz.toFixed(5)}), p) * ${w.k.toFixed(5)} + t * ${w.speed.toFixed(5)} + ${w.phase.toFixed(5)});`;
+}).join('\n        ');
+
+/* -------------------------------------------------------------------------- */
+/*  Ocean surface                                                             */
+/* -------------------------------------------------------------------------- */
+
+const waterUniforms = {
+  uTime: { value: 0 },
+  uStorm: { value: storm },
+  uAmpScale: { value: waveAmpScale(storm) },
+  uMeanY: { value: WATER_MEAN },
+  uSunDir: { value: sunDir.clone() },
+  uSunColor: { value: new THREE.Color() },
+  uSkyTop: { value: new THREE.Color() },
+  uSkyHorizon: { value: new THREE.Color() },
+  uDeep: { value: new THREE.Color() },
+  uMid: { value: new THREE.Color() },
+  uShallow: { value: new THREE.Color() },
+  uFoam: { value: new THREE.Color() },
+  uGlow: { value: new THREE.Color() },
+  uShipPos: { value: new THREE.Vector2() },
+  uShipDir: { value: new THREE.Vector2(0, 1) },
+  uWake: { value: 0.6 },
+  uFlash: { value: 0 },
+  uSunIntensity: { value: 1.0 },
+  uFoamAmount: { value: 1.0 },
+  uSpecAmount: { value: 1.0 }
+};
+
+const waterVertex = /* glsl */`
+  uniform float uTime;
+  uniform float uAmpScale;
+  uniform float uMeanY;
+  varying vec3 vWorldPos;
+  varying vec3 vNormalW;
+  varying float vWaveH;
+  varying vec2 vPlane;
+
+  float waveHeight(vec2 p, float t){
+    float h = 0.0;
+    ${waveGLSL}
+    return h;
+  }
+
+  vec3 waveNormal(vec2 p, float t){
+    float e = 0.055;
+    float hl = waveHeight(p - vec2(e, 0.0), t);
+    float hr = waveHeight(p + vec2(e, 0.0), t);
+    float hd = waveHeight(p - vec2(0.0, e), t);
+    float hu = waveHeight(p + vec2(0.0, e), t);
+    vec2 g = vec2(hr - hl, hu - hd) / (2.0 * e) * uAmpScale;
+    return normalize(vec3(-g.x, 1.0, -g.y));
+  }
+
+  void main(){
+    vPlane = position.xz;
+    float h = waveHeight(position.xz, uTime) * uAmpScale;
+    vec3 p = position;
+    p.y = uMeanY + h;
+
+    vWaveH = h;
+    vNormalW = normalize(mat3(modelMatrix) * waveNormal(position.xz, uTime));
+
+    vec4 world = modelMatrix * vec4(p, 1.0);
+    vWorldPos = world.xyz;
+    gl_Position = projectionMatrix * viewMatrix * world;
+  }
+`;
+
+const waterFragment = /* glsl */`
+  uniform float uTime;
+  uniform float uStorm;
+  uniform float uFlash;
+  uniform float uSunIntensity;
+  uniform vec3 uSunDir;
+  uniform vec3 uSunColor;
+  uniform vec3 uSkyTop;
+  uniform vec3 uSkyHorizon;
+  uniform vec3 uDeep;
+  uniform vec3 uMid;
+  uniform vec3 uShallow;
+  uniform vec3 uFoam;
+  uniform vec3 uGlow;
+  uniform vec2 uShipPos;
+  uniform vec2 uShipDir;
+  uniform float uWake;
+  uniform float uFoamAmount;
+  uniform float uSpecAmount;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormalW;
+  varying float vWaveH;
+  varying vec2 vPlane;
+
+  float hash(vec2 p){
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+  float noise(vec2 p){
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+  float fbm(vec2 p){
+    float v = 0.0, a = 0.5;
+    mat2 m = mat2(0.80, -0.60, 0.60, 0.80);
+    for(int i=0;i<4;i++){
+      v += a * noise(p);
+      p = m * p * 2.02 + 7.1;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  vec3 detailNormal(vec2 p, float t){
+    vec2 g = vec2(0.0);
+    vec2 d1 = normalize(vec2(0.92, 0.38));
+    vec2 d2 = normalize(vec2(-0.56, 0.83));
+    vec2 d3 = normalize(vec2(0.27, -0.96));
+    g += d1 * cos(dot(d1, p) * 17.0 + t * 2.35) * 0.052;
+    g += d2 * cos(dot(d2, p) * 23.0 - t * 2.85) * 0.037;
+    g += d3 * cos(dot(d3, p) * 38.0 + t * 3.6) * 0.022;
+    g *= mix(0.42, 1.45, uStorm);
+    return normalize(vec3(-g.x, 1.0, -g.y));
+  }
+
+  void main(){
+    vec3 N = normalize(vNormalW);
+    if (!gl_FrontFacing) N = -N;
+
+    vec3 detail = detailNormal(vWorldPos.xz, uTime);
+    N = normalize(N + vec3(detail.x, 0.0, detail.z) * 0.62);
+
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    vec3 L = normalize(uSunDir);
+    float NdV = clamp(dot(N, V), 0.0, 1.0);
+    float fresnel = 0.025 + 0.975 * pow(1.0 - NdV, 5.0);
+
+    vec3 R = reflect(-V, N);
+    float skyMix = pow(clamp(R.y, 0.0, 1.0), 0.48);
+    vec3 reflectedSky = mix(uSkyHorizon, uSkyTop, skyMix);
+
+    float sunMirror = pow(max(dot(R, L), 0.0), 2400.0);
+    float sunWide = pow(max(dot(R, L), 0.0), 260.0);
+    vec3 reflection = reflectedSky
+      + uSunColor * (sunMirror * 1.8 + sunWide * 0.008) * uSunIntensity * uSpecAmount;
+
+    float crest = smoothstep(-0.01, 0.56, vWaveH);
+    vec3 bodyCol = mix(uDeep, uMid, 0.48 + crest * 0.5);
+    bodyCol = mix(bodyCol, uShallow, crest * 0.44);
+
+    // light bleeding through thin crests
+    float backLight = pow(clamp(dot(V, -normalize(vec3(L.x, 0.14, L.z))), 0.0, 1.0), 2.4);
+    bodyCol += uGlow * (0.018 + crest * 0.085) * (0.35 + backLight * 0.8);
+    bodyCol += uShallow * crest * 0.14;
+
+    vec3 H = normalize(V + L);
+    float specPower = pow(max(dot(N, H), 0.0), 1600.0);
+    float sparkleNoise = noise(vWorldPos.xz * 88.0 + vec2(uTime * 0.46, -uTime * 0.29));
+    float sparkleFine = noise(vWorldPos.xz * 215.0 - vec2(uTime * 0.31, uTime * 0.22));
+    float sparkle = smoothstep(0.58, 0.88, sparkleNoise) * smoothstep(0.40, 0.90, sparkleFine);
+    vec3 spec = uSunColor * specPower * (0.10 + sparkle * 4.2) * uSunIntensity * uSpecAmount;
+
+    vec3 col = mix(bodyCol, reflection, clamp(fresnel * 0.94, 0.0, 0.84)) + spec;
+
+    // under-water light kissing the surface
+    col += uGlow * pow(1.0 - NdV, 2.2) * 0.045;
+
+    // --- foam -------------------------------------------------------------
+    float n1 = fbm(vWorldPos.xz * 3.4 + vec2(uTime * 0.040, -uTime * 0.030));
+    float n2 = fbm(vWorldPos.xz * 8.3 - vec2(uTime * 0.080, uTime * 0.050));
+    float n3 = fbm(vWorldPos.xz * 19.0 + vec2(uTime * 0.125, uTime * 0.040));
+    float n4 = fbm(vWorldPos.xz * 41.0 - vec2(uTime * 0.17, uTime * 0.09));
+
+    float potential = clamp((vWaveH - 0.14) / 0.62, 0.0, 1.0);
+    float breakUp = n2 * 0.52 + n3 * 0.48;
+    float cover = smoothstep(0.10, 0.86, uStorm);
+    float cap = smoothstep(0.47 - cover * 0.15, 0.81, potential + (breakUp - 0.5) * 0.48);
+    float lace = smoothstep(0.40, 0.62, n3 + n2 * 0.22 + n4 * 0.12);
+    float holes = fbm(vWorldPos.xz * 14.0 - vec2(uTime * 0.09, uTime * 0.06));
+    float laceFine = fbm(vWorldPos.xz * 33.0 + vec2(uTime * 0.14, -uTime * 0.10));
+    float granular = smoothstep(0.26, 0.61, holes * 0.55 + laceFine * 0.45 + n4 * 0.12);
+    float foam = cap * lace * granular * (0.14 + cover * 0.60);
+    foam = pow(clamp(foam, 0.0, 1.0), 1.06) * 0.92;
+
+    // wind-torn threads along the crests
+    vec2 stretchP = vec2(vWorldPos.x * 5.2 + vWorldPos.z * 2.1, vWorldPos.z * 15.0 - vWorldPos.x * 4.0);
+    float threads = smoothstep(0.58, 0.82, fbm(stretchP + vec2(uTime * 0.08, -uTime * 0.04)));
+    foam = max(foam, threads * cap * cover * 0.19);
+
+    // a little spindrift on the tallest crests
+    float spindrift = smoothstep(0.46, 0.68, vWaveH) * smoothstep(0.60, 0.82, n4);
+    foam = max(foam, spindrift * cover * 0.27);
+
+    // faint white lace even in the calm dawn sea
+    foam = max(foam, smoothstep(0.18, 0.30, vWaveH) * smoothstep(0.66, 0.88, n4) * 0.08);
+    foam *= uFoamAmount;
+
+    // wake and churn around the little ship
+    vec2 rel = vWorldPos.xz - uShipPos;
+    vec2 fwd = normalize(uShipDir + vec2(0.0001, 0.0001));
+    vec2 perp = vec2(-fwd.y, fwd.x);
+    float across = abs(dot(rel, perp));
+    float behind = -dot(rel, fwd);
+    float hullChurn = smoothstep(0.52, 0.05, length(rel));
+    float trail = smoothstep(0.65, 0.02, across) * smoothstep(-0.02, 0.12, behind) * smoothstep(2.2, 0.05, behind);
+    float wakeMask = max(hullChurn, trail * 0.48) * (0.50 + n2 * 0.65) * uWake;
+    foam = max(foam, wakeMask);
+    foam = clamp(foam, 0.0, 1.0);
+
+    vec3 foamCol = mix(uFoam, uShallow * 1.28 + vec3(0.03), 0.27);
+    foamCol *= 0.74 + 0.26 * max(dot(N, L), 0.0);
+    foamCol += uGlow * 0.03;
+    foamCol = mix(foamCol, uDeep, n3 * 0.18);
+    col = mix(col, foamCol, foam * 0.70);
+
+    // whitecaps catch the flash of lightning
+    col += vec3(0.52, 0.68, 0.86) * uFlash * (0.06 + foam * 0.7) * 0.9;
+
+    // gentle distance depth tint
+    float viewDist = length(cameraPosition - vWorldPos);
+    col = mix(col, uDeep, smoothstep(12.0, 32.0, viewDist) * 0.22);
+
+    // tiny specular pinpricks in the foam
+    float glint = smoothstep(0.86, 0.995, noise(vWorldPos.xz * 110.0 + uTime * 0.7));
+    col += foam * glint * uSunColor * 0.12 * uSunIntensity;
+
+    // Seen from below, the surface becomes a luminous ceiling.
+    if (!gl_FrontFacing) {
+      float window = pow(max(dot(normalize(cameraPosition - vWorldPos), -L), 0.0), 3.0);
+      col = mix(col, uMid * 1.8 + uShallow * 0.36 + uGlow * 0.12, 0.52);
+      col += uSunColor * window * 0.34 * uSunIntensity;
+      col += uGlow * 0.06;
+    }
+
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
+const waterGeo = new THREE.PlaneGeometry(CUBE - 0.06, CUBE - 0.06, isCoarse ? 200 : 288, isCoarse ? 200 : 288);
+waterGeo.rotateX(-Math.PI / 2);
+const waterMat = new THREE.ShaderMaterial({
+  uniforms: waterUniforms,
+  vertexShader: waterVertex,
+  fragmentShader: waterFragment,
+  side: THREE.DoubleSide
+});
+const water = new THREE.Mesh(waterGeo, waterMat);
+water.frustumCulled = false;
+scene.add(water);
+
+/* -------------------------------------------------------------------------- */
+/*  Water volume — a soft blue interior skin behind the transparent glass     */
+/* -------------------------------------------------------------------------- */
+
+const volumeUniforms = {
+  uTime: { value: 0 },
+  uStorm: { value: storm },
+  uTop: { value: WATER_MEAN },
+  uMid: { value: new THREE.Color() },
+  uDeep: { value: new THREE.Color() },
+  uGlow: { value: new THREE.Color() }
+};
+
+const volumeMat = new THREE.ShaderMaterial({
+  uniforms: volumeUniforms,
+  transparent: true,
+  depthWrite: false,
+  side: THREE.BackSide,
+  blending: THREE.NormalBlending,
+  vertexShader: /* glsl */`
+    varying vec3 vWorld;
+    void main(){
+      vec4 w = modelMatrix * vec4(position, 1.0);
+      vWorld = w.xyz;
+      gl_Position = projectionMatrix * viewMatrix * w;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform float uTime;
+    uniform float uStorm;
+    uniform float uTop;
+    uniform vec3 uMid;
+    uniform vec3 uDeep;
+    uniform vec3 uGlow;
+    varying vec3 vWorld;
+
+    float hash(vec2 p){
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1.0,0.0)), f.x),
+                 mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+    }
+
+    void main(){
+      float depth = clamp((uTop - vWorld.y) / 8.6, 0.0, 1.0);
+      vec3 col = mix(uMid, uDeep, smoothstep(0.0, 0.95, depth));
+
+      // caustic ribbons near the surface
+      float caus = sin(vWorld.x * 5.2 + sin(vWorld.z * 4.0 + uTime * 0.38) * 2.6 + uTime * 0.55);
+      caus = pow(clamp(caus * 0.5 + 0.5, 0.0, 1.0), 7.0);
+      float caus2 = pow(clamp(sin(vWorld.z * 7.0 - vWorld.x * 2.5 - uTime * 0.44) * 0.5 + 0.5, 0.0, 1.0), 10.0);
+      float causMask = (1.0 - depth) * (1.0 - depth);
+      col += uGlow * (caus + caus2) * causMask * (0.18 + uStorm * 0.12);
+
+      // drifting mote texture in the body
+      float motes = noise(vWorld.xz * 5.5 + vec2(uTime * 0.05, -uTime * 0.03));
+      col += uGlow * smoothstep(0.76, 1.0, motes) * 0.035 * (1.0 - depth * 0.5);
+
+      float alpha = mix(0.075, 0.42, smoothstep(0.0, 0.9, depth));
+      alpha += (caus + caus2) * causMask * 0.034;
+      gl_FragColor = vec4(col, alpha);
+
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }
+  `
+});
+
+const volume = new THREE.Mesh(
+  new THREE.BoxGeometry(CUBE - 0.22, WATER_MEAN - CUBE_BOTTOM - 0.12, CUBE - 0.22),
+  volumeMat
+);
+volume.position.y = (WATER_MEAN + CUBE_BOTTOM) * 0.5;
+volume.renderOrder = -8;
+volume.frustumCulled = false;
+scene.add(volume);
+
+/* -------------------------------------------------------------------------- */
+/*  Seabed and a few dark rock silhouettes                                    */
+/* -------------------------------------------------------------------------- */
+
+const seabed = new THREE.Mesh(
+  new THREE.PlaneGeometry(CUBE - 0.25, CUBE - 0.25, 1, 1),
+  new THREE.MeshStandardMaterial({
+    color: 0x04121a,
+    roughness: 0.96,
+    metalness: 0.1
+  })
+);
+seabed.rotation.x = -Math.PI / 2;
+seabed.position.y = CUBE_BOTTOM + 0.10;
+scene.add(seabed);
+
+const rockMat = new THREE.MeshStandardMaterial({ color: 0x06141c, roughness: 0.9, metalness: 0.05, flatShading: true });
+const rocks = new THREE.Group();
+[
+  [-3.4, -4.20, -2.8, 0.7, 0.38, 0.6, 0.4],
+  [-2.7, -4.28, -3.2, 0.45, 0.28, 0.4, 1.2],
+  [3.25, -4.25, -2.7, 0.8, 0.32, 0.55, 2.1],
+  [2.4, -4.35, -3.4, 0.35, 0.18, 0.35, 0.7],
+  [3.6, -4.28, 2.5, 0.55, 0.3, 0.65, 1.7]
+].forEach(([x, y, z, sx, sy, sz, rot]) => {
+  const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7, 0), rockMat);
+  r.position.set(x, y, z);
+  r.scale.set(sx, sy, sz);
+  r.rotation.set(rot * 0.3, rot, rot * 0.15);
+  rocks.add(r);
+});
+scene.add(rocks);
+
+/* -------------------------------------------------------------------------- */
+/*  Glass cube                                                                */
+/* -------------------------------------------------------------------------- */
+
+const glassUniforms = {
+  uTime: { value: 0 },
+  uStorm: { value: storm },
+  uColor: { value: new THREE.Color() },
+  uFlash: { value: 0 }
+};
+
+const glass = new THREE.Mesh(
+  new THREE.BoxGeometry(CUBE, CUBE, CUBE),
+  new THREE.ShaderMaterial({
+    uniforms: glassUniforms,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+    blending: THREE.NormalBlending,
+    vertexShader: /* glsl */`
+      varying vec3 vWorld;
+      varying vec3 vNormalW;
+      varying vec2 vUv;
+      varying vec3 vLocal;
+      void main(){
+        vUv = uv;
+        vLocal = position;
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        vNormalW = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform float uTime;
+      uniform float uStorm;
+      uniform vec3 uColor;
+      uniform float uFlash;
+      varying vec3 vWorld;
+      varying vec3 vNormalW;
+      varying vec2 vUv;
+      varying vec3 vLocal;
+
+      float hash(vec2 p){
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+      float noise(vec2 p){
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0,0.0)), f.x),
+                   mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+      }
+
+      void main(){
+        vec3 N = normalize(vNormalW);
+        vec3 V = normalize(cameraPosition - vWorld);
+        float facing = abs(dot(N, V));
+        float fresnel = pow(1.0 - facing, 3.2);
+
+        bool top = abs(N.y) > 0.72;
+        float topQuiet = top ? 0.25 : 1.0;
+
+        // faint rain streaks on the vertical panes
+        float streak = noise(vec2(vWorld.x * 18.0 + vWorld.z * 3.0, vWorld.y * 2.6 + uTime * 0.55));
+        streak = smoothstep(0.76, 0.985, streak) * (1.0 - topQuiet * 0.4);
+        float breath = noise(vec2(vWorld.x * 4.0 + uTime * 0.06, vWorld.y * 3.0 - uTime * 0.03));
+
+        vec3 tint = uColor * (0.7 + breath * 0.35);
+        float alpha = (0.014 + fresnel * 0.15 + streak * (0.012 + uStorm * 0.035)) * topQuiet;
+        alpha += (1.0 - topQuiet) * 0.006;
+
+        // a slow glassy highlight band
+        float band = smoothstep(0.72, 0.94, sin((vWorld.x + vWorld.z) * 0.55 + vWorld.y * 0.2 - uTime * 0.08) * 0.5 + 0.5);
+        alpha += band * 0.018 * (1.0 - topQuiet * 0.5);
+        tint += vec3(0.16, 0.24, 0.27) * band * 0.6;
+
+        tint += vec3(0.42, 0.62, 0.75) * uFlash * fresnel * 0.35;
+
+        gl_FragColor = vec4(tint, clamp(alpha, 0.0, 0.34));
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `
+  })
+);
+glass.renderOrder = 12;
+glass.frustumCulled = false;
+scene.add(glass);
+
+// Edge frame
+const edgeMat = new THREE.MeshBasicMaterial({
+  color: palette.rim,
+  transparent: true,
+  opacity: 0.46,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const edgeGroup = new THREE.Group();
+const edgeRadius = 0.018;
+const edgeGeomHorizontal = new THREE.CylinderGeometry(edgeRadius, edgeRadius, CUBE, 6, 1, true);
+edgeGeomHorizontal.rotateZ(Math.PI / 2);
+const edgeGeomVertical = new THREE.CylinderGeometry(edgeRadius, edgeRadius, CUBE, 6, 1, true);
+const edgeGeomDepth = new THREE.CylinderGeometry(edgeRadius, edgeRadius, CUBE, 6, 1, true);
+edgeGeomDepth.rotateX(Math.PI / 2);
+
+for (const y of [-HALF, HALF]) {
+  for (const z of [-HALF, HALF]) {
+    const m = new THREE.Mesh(edgeGeomHorizontal, edgeMat);
+    m.position.set(0, y, z);
+    edgeGroup.add(m);
+  }
+  for (const x of [-HALF, HALF]) {
+    const m = new THREE.Mesh(edgeGeomDepth, edgeMat);
+    m.position.set(x, y, 0);
+    edgeGroup.add(m);
+  }
+}
+for (const x of [-HALF, HALF]) {
+  for (const z of [-HALF, HALF]) {
+    const m = new THREE.Mesh(edgeGeomVertical, edgeMat);
+    m.position.set(x, 0, z);
+    edgeGroup.add(m);
+  }
+}
+edgeGroup.renderOrder = 13;
+scene.add(edgeGroup);
+
+// tiny brighter nodes at the corners
+const nodeMat = new THREE.MeshBasicMaterial({
+  color: palette.rim,
+  transparent: true,
+  opacity: 0.6,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+for (const x of [-HALF, HALF]) {
+  for (const y of [-HALF, HALF]) {
+    for (const z of [-HALF, HALF]) {
+      const node = new THREE.Mesh(new THREE.SphereGeometry(0.034, 7, 5), nodeMat);
+      node.position.set(x, y, z);
+      edgeGroup.add(node);
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Reflective gallery floor                                                  */
+/* -------------------------------------------------------------------------- */
+
+const reflector = new Reflector(new THREE.CircleGeometry(23, 80), {
+  clipBias: 0.0035,
+  textureWidth: isCoarse ? 640 : 1024,
+  textureHeight: isCoarse ? 640 : 1024,
+  color: 0x465359
+});
+reflector.rotation.x = -Math.PI / 2;
+reflector.position.y = FLOOR_Y;
+scene.add(reflector);
+
+const floorOverlayUniforms = {
+  uColor: { value: new THREE.Color(0x010204) },
+  uAccent: { value: new THREE.Color() },
+  uStorm: { value: storm },
+  uTime: { value: 0 }
+};
+const floorOverlay = new THREE.Mesh(
+  new THREE.PlaneGeometry(46, 46),
+  new THREE.ShaderMaterial({
+    uniforms: floorOverlayUniforms,
+    transparent: true,
+    depthWrite: false,
+    vertexShader: /* glsl */`
+      varying vec2 vUv;
+      void main(){
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform vec3 uColor;
+      uniform vec3 uAccent;
+      uniform float uStorm;
+      uniform float uTime;
+      varying vec2 vUv;
+
+      float hash(vec2 p){
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+      float noise(vec2 p){
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0,0.0)), f.x),
+                   mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+      }
+
+      void main(){
+        vec2 p = (vUv - 0.5) * 2.0;
+        float d = length(p);
+        float edge = smoothstep(0.22, 0.96, d);
+        float ripple = sin(d * 34.0 - uTime * 0.6 + noise(vUv * 7.0) * 2.0) * 0.5 + 0.5;
+        float alpha = mix(0.06, 0.96, edge);
+        alpha = clamp(alpha + 0.018 * ripple, 0.0, 1.0);
+        vec3 col = uColor + uAccent * (1.0 - d) * 0.014 * (0.4 + ripple * 0.6);
+        gl_FragColor = vec4(col, alpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `
+  })
+);
+floorOverlay.rotation.x = -Math.PI / 2;
+floorOverlay.position.y = FLOOR_Y + 0.006;
+floorOverlay.renderOrder = 2;
+scene.add(floorOverlay);
+
+// soft warm/cold pool on the floor
+const poolUniforms = {
+  uColor: { value: new THREE.Color() },
+  uOpacity: { value: 0.1 },
+  uTime: { value: 0 }
+};
+const pool = new THREE.Mesh(
+  new THREE.PlaneGeometry(22, 22),
+  new THREE.ShaderMaterial({
+    uniforms: poolUniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */`
+      varying vec2 vUv;
+      void main(){
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      uniform float uTime;
+      varying vec2 vUv;
+      void main(){
+        vec2 p = (vUv - 0.5) * 2.0;
+        float d = length(p);
+        float glow = exp(-d * d * 5.2);
+        float ring = smoothstep(0.0, 0.03, abs(d - 0.52 - sin(d * 14.0 + uTime * 0.18) * 0.01));
+        float a = glow * uOpacity + (1.0 - ring) * 0.006;
+        gl_FragColor = vec4(uColor * a, a);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `
+  })
+);
+pool.rotation.x = -Math.PI / 2;
+pool.position.y = FLOOR_Y + 0.012;
+pool.renderOrder = 3;
+scene.add(pool);
+
+/* -------------------------------------------------------------------------- */
+/*  Guest particles outside the cube                                          */
+/* -------------------------------------------------------------------------- */
+
+const dustUniforms = {
+  uTime: { value: 0 },
+  uPixelRatio: { value: renderer.getPixelRatio() },
+  uColor: { value: new THREE.Color(0xb9d1d6) },
+  uOpacity: { value: 0.35 }
+};
+
+const dustGeo = new THREE.BufferGeometry();
+{
+  const count = 160;
+  const pos = new Float32Array(count * 3);
+  const size = new Float32Array(count);
+  const phase = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 30;
+    pos[i * 3 + 1] = -5.8 + Math.random() * 18;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 30;
+    size[i] = 0.6 + Math.random() * 1.8;
+    phase[i] = Math.random() * Math.PI * 2;
+  }
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  dustGeo.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+  dustGeo.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+}
+
+const dustMat = new THREE.ShaderMaterial({
+  uniforms: dustUniforms,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: /* glsl */`
+    uniform float uTime;
+    uniform float uPixelRatio;
+    attribute float aSize;
+    attribute float aPhase;
+    varying float vAlpha;
+    void main(){
+      vec3 p = position;
+      p.x += sin(uTime * 0.07 + aPhase) * 0.7;
+      p.y += cos(uTime * 0.05 + aPhase * 1.7) * 0.35;
+      p.z += cos(uTime * 0.06 + aPhase * 0.8) * 0.6;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_PointSize = aSize * uPixelRatio * (34.0 / max(2.0, -mv.z));
+      gl_Position = projectionMatrix * mv;
+      vAlpha = (0.3 + 0.7 * (sin(uTime * 0.25 + aPhase) * 0.5 + 0.5));
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    varying float vAlpha;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.05, d) * vAlpha * uOpacity;
+      gl_FragColor = vec4(uColor, a);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }
+  `
+});
+const dust = new THREE.Points(dustGeo, dustMat);
+dust.renderOrder = 4;
+dust.frustumCulled = false;
+scene.add(dust);
+
+/* -------------------------------------------------------------------------- */
+/*  Underwater marine snow                                                    */
+/* -------------------------------------------------------------------------- */
+
+const snowUniforms = {
+  uTime: { value: 0 },
+  uPixelRatio: { value: renderer.getPixelRatio() },
+  uColor: { value: new THREE.Color() },
+  uOpacity: { value: 0.55 }
+};
+
+const snowGeo = new THREE.BufferGeometry();
+{
+  const count = isCoarse ? 260 : 420;
+  const pos = new Float32Array(count * 3);
+  const size = new Float32Array(count);
+  const phase = new Float32Array(count);
+  const speed = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const r = 4.55 * Math.sqrt(Math.random());
+    const a = Math.random() * Math.PI * 2;
+    pos[i * 3] = Math.cos(a) * r;
+    pos[i * 3 + 1] = CUBE_BOTTOM + 0.2 + Math.random() * (WATER_MEAN - CUBE_BOTTOM - 0.4);
+    pos[i * 3 + 2] = Math.sin(a) * r;
+    size[i] = 0.35 + Math.random() * 1.5;
+    phase[i] = Math.random() * Math.PI * 2;
+    speed[i] = 0.05 + Math.random() * 0.15;
+  }
+  snowGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  snowGeo.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+  snowGeo.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+  snowGeo.setAttribute('aSpeed', new THREE.BufferAttribute(speed, 1));
+}
+
+const snowMat = new THREE.ShaderMaterial({
+  uniforms: snowUniforms,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: /* glsl */`
+    uniform float uTime;
+    uniform float uPixelRatio;
+    attribute float aSize;
+    attribute float aPhase;
+    attribute float aSpeed;
+    varying float vAlpha;
+    void main(){
+      vec3 p = position;
+      p.y += sin(uTime * aSpeed + aPhase) * 0.35;
+      p.x += sin(uTime * 0.10 + aPhase) * 0.18;
+      p.z += cos(uTime * 0.08 + aPhase * 1.2) * 0.18;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_PointSize = aSize * uPixelRatio * (30.0 / max(1.4, -mv.z));
+      gl_Position = projectionMatrix * mv;
+      vAlpha = 0.35 + 0.65 * (sin(uTime * 0.3 + aPhase * 2.0) * 0.5 + 0.5);
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    varying float vAlpha;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.04, d) * vAlpha * uOpacity;
+      gl_FragColor = vec4(uColor, a);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }
+  `
+});
+const snow = new THREE.Points(snowGeo, snowMat);
+snow.renderOrder = 5;
+snow.frustumCulled = false;
+scene.add(snow);
+
+/* -------------------------------------------------------------------------- */
+/*  Light shafts                                                              */
+/* -------------------------------------------------------------------------- */
+
+const shaftUniforms = {
+  uTime: { value: 0 },
+  uColor: { value: new THREE.Color() },
+  uOpacity: { value: 0.3 },
+  uStorm: { value: storm },
+  uFlash: { value: 0 }
+};
+
+function makeShaftGeometry(topWidth, bottomWidth, height) {
+  const geo = new THREE.BufferGeometry();
+  const hwTop = topWidth * 0.5;
+  const hwBot = bottomWidth * 0.5;
+  const pos = new Float32Array([
+    -hwTop, 0, 0,
+     hwTop, 0, 0,
+    -hwBot, -height, 0,
+     hwBot, -height, 0
+  ]);
+  const uv = new Float32Array([
+    0, 1,
+    1, 1,
+    0, 0,
+    1, 0
+  ]);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setIndex([0, 2, 1, 1, 2, 3]);
+  return geo;
+}
+
+const shaftMat = new THREE.ShaderMaterial({
+  uniforms: shaftUniforms,
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    varying vec3 vWorld;
+    void main(){
+      vUv = uv;
+      vec4 w = modelMatrix * vec4(position, 1.0);
+      vWorld = w.xyz;
+      gl_Position = projectionMatrix * viewMatrix * w;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform float uTime;
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    uniform float uStorm;
+    uniform float uFlash;
+    varying vec2 vUv;
+    varying vec3 vWorld;
+
+    float hash(vec2 p){
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1.0,0.0)), f.x),
+                 mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+    }
+
+    void main(){
+      float edge = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+      float fade = smoothstep(0.0, 0.14, vUv.y) * (0.25 + 0.75 * vUv.y);
+      float wobble = 0.55 + 0.45 * noise(vec2(vUv.x * 4.5 + uTime * 0.12, vUv.y * 3.5 - uTime * 0.06));
+      float bands = 0.55 + 0.45 * smoothstep(0.35, 0.8, noise(vec2(vUv.y * 10.0 - uTime * 0.25, vUv.x * 3.0)));
+      float a = edge * fade * wobble * bands * uOpacity;
+      a *= 0.55 + uStorm * 0.12 + uFlash * 1.4;
+      vec3 col = uColor * (0.7 + 0.5 * vUv.y) + vec3(0.26, 0.41, 0.54) * uFlash * 0.4;
+      gl_FragColor = vec4(col, a);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }
+  `
+});
+
+const shafts = new THREE.Group();
+const shaftDefs = [
+  { x: -2.8, z: -1.1, top: 0.26, bottom: 2.4, h: 8.4, tilt: -0.17, rot: 0.35, op: 0.18 },
+  { x: -0.8, z: -2.8, top: 0.18, bottom: 1.7, h: 8.2, tilt: 0.12, rot: 1.22, op: 0.12 },
+  { x: 2.6, z: -0.8, top: 0.34, bottom: 2.8, h: 8.6, tilt: -0.11, rot: -0.5, op: 0.17 },
+  { x: 1.4, z: 2.4, top: 0.15, bottom: 1.5, h: 8.0, tilt: 0.16, rot: 2.0, op: 0.09 },
+  { x: -1.7, z: 2.7, top: 0.22, bottom: 2.0, h: 8.3, tilt: -0.08, rot: 2.8, op: 0.10 }
+];
+for (const def of shaftDefs) {
+  const group = new THREE.Group();
+  group.position.set(def.x, WATER_MEAN - 0.08, def.z);
+  group.rotation.y = def.rot;
+  group.rotation.z = def.tilt;
+
+  for (let k = 0; k < 2; k++) {
+    const mesh = new THREE.Mesh(makeShaftGeometry(def.top, def.bottom, def.h), shaftMat);
+    mesh.rotation.y = k * Math.PI / 2;
+    mesh.userData.baseOpacity = def.op;
+    group.add(mesh);
+  }
+  group.userData.phase = Math.random() * Math.PI * 2;
+  group.userData.baseRot = def.rot;
+  group.userData.tilt = def.tilt;
+  shafts.add(group);
+}
+shafts.renderOrder = 6;
+scene.add(shafts);
+
+/* -------------------------------------------------------------------------- */
+/*  Procedural textures                                                       */
+/* -------------------------------------------------------------------------- */
+
+function makeGlowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.12, 'rgba(205,232,255,.85)');
+  g.addColorStop(0.42, 'rgba(110,174,221,.22)');
+  g.addColorStop(1.0, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const glowTexture = makeGlowTexture();
+
+// A soft gallery halo behind the cube. It reads as the room's last pool of light.
+const backGlowMaterial = new THREE.SpriteMaterial({
+  map: glowTexture,
+  color: 0xffb677,
+  transparent: true,
+  opacity: 0.16,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const backGlow = new THREE.Sprite(backGlowMaterial);
+backGlow.position.set(-7.5, 10.5, -19);
+backGlow.scale.set(30, 23, 1);
+backGlow.renderOrder = -2;
+scene.add(backGlow);
+
+const backGlowCoreMaterial = new THREE.SpriteMaterial({
+  map: glowTexture,
+  color: 0xffd8a7,
+  transparent: true,
+  opacity: 0.22,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const backGlowCore = new THREE.Sprite(backGlowCoreMaterial);
+backGlowCore.position.set(-8.4, 12.8, -20);
+backGlowCore.scale.set(10, 8, 1);
+backGlowCore.renderOrder = -1;
+scene.add(backGlowCore);
+
+/* -------------------------------------------------------------------------- */
+/*  Tiny research vessel                                                      */
+/* -------------------------------------------------------------------------- */
+
+function makeHullGeometry() {
+  const sections = [
+    { z: -0.50, w: 0.11, deck: 0.055, keel: -0.055 },
+    { z: -0.33, w: 0.195, deck: 0.072, keel: -0.135 },
+    { z:  0.05, w: 0.22, deck: 0.078, keel: -0.145 },
+    { z:  0.31, w: 0.17, deck: 0.095, keel: -0.09 },
+    { z:  0.52, w: 0.014, deck: 0.115, keel: -0.01 }
+  ];
+  const pos = [];
+  const idx = [];
+  const push = (x, y, z) => { pos.push(x, y, z); return pos.length / 3 - 1; };
+
+  const rings = sections.map(s => {
+    return {
+      tl: push(-s.w, s.deck, s.z),
+      tr: push( s.w, s.deck, s.z),
+      bl: push(-s.w * 0.72, s.keel, s.z),
+      br: push( s.w * 0.72, s.keel, s.z)
+    };
+  });
+
+  const quad = (a, b, c, d) => idx.push(a, b, c, a, c, d);
+  for (let i = 0; i < rings.length - 1; i++) {
+    const a = rings[i], b = rings[i + 1];
+    quad(a.tl, a.bl, b.bl, b.tl); // port side
+    quad(a.br, b.br, b.bl, a.bl); // starboard bottom? (kept for closure)
+    quad(a.tr, a.br, b.br, b.tr); // starboard top rim
+    quad(a.tl, b.tl, b.tr, a.tr); // deck
+    quad(a.bl, b.bl, b.br, a.br); // keel
+  }
+
+  // stern cap
+  const s = rings[0];
+  idx.push(s.tl, s.bl, s.br, s.tl, s.br, s.tr);
+  // bow cap
+  const b = rings[rings.length - 1];
+  idx.push(b.tl, b.tr, b.br, b.tl, b.br, b.bl);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function createShip() {
+  const ship = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0xa92720, roughness: 0.52, metalness: 0.18 });
+  const hull = new THREE.Mesh(makeHullGeometry(), hullMat);
+  ship.add(hull);
+
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x25343a, roughness: 0.72, metalness: 0.16 });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.024, 0.68), deckMat);
+  deck.position.set(0, 0.075, -0.01);
+  ship.add(deck);
+
+  const white = new THREE.MeshStandardMaterial({ color: 0xe6e0d2, roughness: 0.48, metalness: 0.08 });
+  const whiteDim = new THREE.MeshStandardMaterial({ color: 0xbfc2ba, roughness: 0.62, metalness: 0.1 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x152127, roughness: 0.62, metalness: 0.3 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xb03628, roughness: 0.5, metalness: 0.14 });
+
+  // hull stripe
+  for (const side of [-1, 1]) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.032, 0.67), white);
+    stripe.position.set(side * 0.205, 0.014, -0.02);
+    ship.add(stripe);
+  }
+
+  // cabin
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.255, 0.21, 0.31), white);
+  cabin.position.set(0, 0.185, -0.12);
+  ship.add(cabin);
+
+  const cabinRoof = new THREE.Mesh(new THREE.BoxGeometry(0.285, 0.026, 0.345), whiteDim);
+  cabinRoof.position.set(0, 0.30, -0.12);
+  ship.add(cabinRoof);
+
+  // window strips
+  const windowMat = new THREE.MeshStandardMaterial({
+    color: 0x1a2a31,
+    emissive: 0xffb46c,
+    emissiveIntensity: 2.0,
+    roughness: 0.25,
+    metalness: 0.2
+  });
+  const frontWindows = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.052, 0.006), windowMat);
+  frontWindows.position.set(0, 0.195, 0.0365);
+  ship.add(frontWindows);
+  for (const side of [-1, 1]) {
+    const sideWindows = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.048, 0.19), windowMat);
+    sideWindows.position.set(side * 0.130, 0.195, -0.12);
+    ship.add(sideWindows);
+  }
+
+  // funnel
+  const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.042, 0.15, 10), red);
+  funnel.position.set(0.052, 0.365, -0.24);
+  ship.add(funnel);
+  const funnelTop = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.014, 10), dark);
+  funnelTop.position.set(0.052, 0.447, -0.24);
+  ship.add(funnelTop);
+
+  // mast and instruments
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.006, 0.62, 5), whiteDim);
+  mast.position.set(-0.03, 0.54, 0.10);
+  ship.add(mast);
+  const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.20, 4), whiteDim);
+  crossbar.rotation.z = Math.PI / 2;
+  crossbar.position.set(-0.03, 0.73, 0.10);
+  ship.add(crossbar);
+
+  const radar = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.012, 0.018), whiteDim);
+  radar.position.set(-0.03, 0.77, 0.10);
+  ship.add(radar);
+
+  const navWhite = new THREE.MeshStandardMaterial({ color: 0xfff4cf, emissive: 0xffe1a0, emissiveIntensity: 4.0 });
+  const mastLamp = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 5), navWhite);
+  mastLamp.position.set(-0.03, 0.86, 0.10);
+  ship.add(mastLamp);
+  const mastGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture,
+    color: 0xffcf86,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  }));
+  mastGlow.scale.set(0.17, 0.17, 1);
+  mastGlow.position.copy(mastLamp.position);
+  ship.add(mastGlow);
+
+  // deck cargo / scientific crates
+  const crateColors = [0xc66b2a, 0x3f8580, 0xd5c084];
+  for (let i = 0; i < 3; i++) {
+    const crate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.075, 0.105),
+      new THREE.MeshStandardMaterial({ color: crateColors[i], roughness: 0.64, metalness: 0.1 })
+    );
+    crate.position.set(i === 0 ? -0.085 : 0.07, 0.125, 0.21 + (i % 2) * 0.10);
+    crate.rotation.y = (i - 1) * 0.12;
+    ship.add(crate);
+  }
+
+  // stern A-frame / crane
+  const craneMat = whiteDim;
+  const craneBase = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.025, 0.22, 6), craneMat);
+  craneBase.position.set(0.07, 0.18, -0.37);
+  craneBase.rotation.z = -0.15;
+  ship.add(craneBase);
+  const craneArm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.36, 5), craneMat);
+  craneArm.position.set(0.02, 0.32, -0.30);
+  craneArm.rotation.set(0.45, 0, -0.7);
+  ship.add(craneArm);
+
+  // navigation lights
+  const port = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff553c }));
+  port.position.set(-0.20, 0.13, 0.16);
+  ship.add(port);
+  const starboard = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 5), new THREE.MeshBasicMaterial({ color: 0x71ffb2 }));
+  starboard.position.set(0.20, 0.13, 0.16);
+  ship.add(starboard);
+
+  const cabinLight = new THREE.PointLight(0xffb570, 2.6, 2.4, 2);
+  cabinLight.position.set(0, 0.20, -0.02);
+  ship.add(cabinLight);
+
+  ship.scale.setScalar(1.3);
+  return ship;
+}
+
+const ship = createShip();
+const shipState = {
+  yaw: 0.48,
+  heave: WATER_MEAN,
+  heaveVel: 0,
+  pitch: 0,
+  pitchVel: 0,
+  roll: 0,
+  rollVel: 0,
+  extraRoll: 0,
+  extraRollVel: 0
+};
+scene.add(ship);
+
+/* -------------------------------------------------------------------------- */
+/*  Whale                                                                     */
+/* -------------------------------------------------------------------------- */
+
+function smoothProfile(u, points) {
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    if (u >= a[0] && u <= b[0]) {
+      let t = (u - a[0]) / (b[0] - a[0]);
+      t = t * t * (3 - 2 * t);
+      return mix(a[1], b[1], t);
+    }
+  }
+  return points[points.length - 1][1];
+}
+
+function makeWhaleGeometry() {
+  const rings = isCoarse ? 46 : 64;
+  const radial = isCoarse ? 18 : 24;
+  const length = 4.72;
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const profile = [
+    [0.00, 0.13],
+    [0.045, 0.30],
+    [0.11, 0.43],
+    [0.21, 0.52],
+    [0.32, 0.56],
+    [0.45, 0.53],
+    [0.58, 0.45],
+    [0.71, 0.33],
+    [0.82, 0.21],
+    [0.92, 0.12],
+    [1.00, 0.055]
+  ];
+
+  const topCol = new THREE.Color(0x173e4d).convertSRGBToLinear();
+  const sideCol = new THREE.Color(0x0c2734).convertSRGBToLinear();
+  const bellyCol = new THREE.Color(0x91a6a0).convertSRGBToLinear();
+  const mottleCol = new THREE.Color(0x4e6b6e).convertSRGBToLinear();
+  const col = new THREE.Color();
+
+  const centers = [];
+
+  for (let i = 0; i <= rings; i++) {
+    const u = i / rings;
+    const x = length * 0.5 - length * u;
+    const r = smoothProfile(u, profile);
+    const cy = -0.055 + Math.sin(u * Math.PI) * 0.04 - u * u * 0.02;
+    centers.push([x, cy]);
+
+    for (let j = 0; j < radial; j++) {
+      const a = (j / radial) * Math.PI * 2;
+      const vertical = Math.cos(a);
+      const horizontal = Math.sin(a);
+
+      // subtle skin irregularity
+      const bump = Math.sin(u * 45.0 + a * 3.0) * 0.008 + Math.sin(u * 21.0 - a * 5.0) * 0.006;
+      const py = cy + (r + bump) * vertical * 0.92;
+      const pz = (r + bump) * horizontal * 0.79;
+      const px = x + Math.sin(u * 13.0 + a * 2.0) * 0.006;
+
+      positions.push(px, py, pz);
+
+      const belly = 1.0 - THREE.MathUtils.smoothstep(vertical, -0.72, 0.22);
+      const m = Math.sin(u * 31.0 + a * 4.2) * 0.5 + 0.5;
+      const mottle = Math.max(0, m - 0.55) * (1 - belly * 0.7);
+
+      // three fine ventral grooves in the pale throat
+      const grooveBand = Math.sin(a * 7.0 + u * 6.0);
+      const groove = belly > 0.45 && u > 0.03 && u < 0.32 && grooveBand > 0.86 ? 0.12 : 0.0;
+
+      col.copy(sideCol)
+        .lerp(topCol, THREE.MathUtils.smoothstep(vertical, -0.38, 0.78))
+        .lerp(bellyCol, belly * 0.93)
+        .lerp(mottleCol, mottle * 0.09)
+        .multiplyScalar(1.0 - groove);
+      colors.push(col.r, col.g, col.b);
+    }
+  }
+
+  const ringStart = i => i * radial;
+  for (let i = 0; i < rings; i++) {
+    for (let j = 0; j < radial; j++) {
+      const j2 = (j + 1) % radial;
+      const a = ringStart(i) + j;
+      const b = ringStart(i) + j2;
+      const c = ringStart(i + 1) + j;
+      const d = ringStart(i + 1) + j2;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  // nose point / cap
+  const noseIndex = positions.length / 3;
+  const nose = centers[0];
+  positions.push(nose[0] + 0.055, nose[1], 0);
+  colors.push(topCol.r, topCol.g, topCol.b);
+  for (let j = 0; j < radial; j++) {
+    const j2 = (j + 1) % radial;
+    indices.push(noseIndex, ringStart(0) + j2, ringStart(0) + j);
+  }
+
+  // tail cap
+  const tailIndex = positions.length / 3;
+  const tail = centers[centers.length - 1];
+  positions.push(tail[0] - 0.02, tail[1], 0);
+  colors.push(sideCol.r, sideCol.g, sideCol.b);
+  const lastStart = ringStart(rings);
+  for (let j = 0; j < radial; j++) {
+    const j2 = (j + 1) % radial;
+    indices.push(tailIndex, lastStart + j, lastStart + j2);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// A flat, tapered blade with thickness — used for fins and flukes.
+function makeBladeGeometry(outline, thickness) {
+  const positions = [];
+  const indices = [];
+  const n = outline.length;
+  const contour = outline.map(p => new THREE.Vector2(p[0], p[1]));
+  const faces = THREE.ShapeUtils.triangulateShape(contour, []);
+  const half = thickness * 0.5;
+
+  for (let i = 0; i < n; i++) {
+    positions.push(outline[i][0], half, outline[i][1]);
+  }
+  for (let i = 0; i < n; i++) {
+    positions.push(outline[i][0], -half, outline[i][1]);
+  }
+  for (const f of faces) {
+    indices.push(f[0], f[1], f[2]);
+    indices.push(n + f[2], n + f[1], n + f[0]);
+  }
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    indices.push(i, n + i, j);
+    indices.push(j, n + i, n + j);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeFinGeometry() {
+  return makeBladeGeometry([
+    [0.18, 0.01],
+    [0.02, 0.10],
+    [-0.25, 0.25],
+    [-0.55, 0.53],
+    [-0.78, 0.83],
+    [-0.77, 1.05],
+    [-0.61, 1.17],
+    [-0.41, 0.92],
+    [-0.22, 0.60],
+    [-0.06, 0.32],
+    [0.10, 0.12]
+  ], 0.058);
+}
+
+function makeFlukeGeometry() {
+  return makeBladeGeometry([
+    [0.10, 0.07],
+    [-0.22, 0.22],
+    [-0.78, 0.73],
+    [-1.13, 1.16],
+    [-1.31, 0.80],
+    [-0.94, 0.40],
+    [-0.42, 0.15],
+    [-0.13, 0.045],
+    [-0.05, 0.00],
+    [-0.13, -0.045],
+    [-0.42, -0.15],
+    [-0.94, -0.40],
+    [-1.31, -0.80],
+    [-1.13, -1.16],
+    [-0.78, -0.73],
+    [-0.22, -0.22],
+    [0.10, -0.07]
+  ], 0.10);
+}
+
+function createWhale() {
+  const group = new THREE.Group();
+  group.name = 'whale';
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.55,
+    metalness: 0.08,
+    emissive: 0x041a20,
+    emissiveIntensity: 0.75,
+    envMapIntensity: 0.5
+  });
+  const bodyGeo = makeWhaleGeometry();
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.userData.whale = true;
+  group.add(body);
+
+  // a faint additive silhouette rim makes the dark whale legible in deep water
+  const rimMat = new THREE.MeshBasicMaterial({
+    color: 0x2e9aab,
+    transparent: true,
+    opacity: 0.12,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+  const rim = new THREE.Mesh(bodyGeo, rimMat);
+  rim.scale.setScalar(1.018);
+  rim.renderOrder = 1;
+  group.add(rim);
+
+  const finMat = new THREE.MeshStandardMaterial({
+    color: 0x5f7a75,
+    roughness: 0.78,
+    metalness: 0.04,
+    side: THREE.DoubleSide,
+    emissive: 0x031416,
+    emissiveIntensity: 0.22,
+    envMapIntensity: 0.3
+  });
+  const finGeo = makeFinGeometry();
+
+  const finR = new THREE.Mesh(finGeo, finMat);
+  finR.position.set(1.04, -0.18, 0.28);
+  finR.rotation.set(0.5, -0.04, 0.05);
+  finR.scale.set(0.9, 1.0, 0.74);
+  finR.userData.whale = true;
+  group.add(finR);
+
+  const finL = new THREE.Mesh(finGeo, finMat);
+  finL.position.set(1.04, -0.18, -0.28);
+  finL.rotation.set(-0.5, 0.04, -0.05);
+  finL.scale.set(0.9, 1.0, -0.74);
+  finL.userData.whale = true;
+  group.add(finL);
+
+  const flukes = new THREE.Group();
+  flukes.position.set(-2.24, -0.02, 0);
+  const flukeMat = new THREE.MeshStandardMaterial({
+    color: 0x112f3a,
+    roughness: 0.68,
+    metalness: 0.06,
+    side: THREE.DoubleSide,
+    emissive: 0x02151b,
+    emissiveIntensity: 0.4,
+    envMapIntensity: 0.45
+  });
+  const fluke = new THREE.Mesh(makeFlukeGeometry(), flukeMat);
+  fluke.scale.set(0.93, 1.0, 0.86);
+  fluke.userData.whale = true;
+  flukes.add(fluke);
+  flukes.rotation.x = 0.24;
+  flukes.rotation.z = 0.30;
+  group.add(flukes);
+
+  const dorsalGeo = new THREE.ConeGeometry(0.15, 0.32, 5);
+  dorsalGeo.scale(0.62, 1, 0.32);
+  const dorsal = new THREE.Mesh(dorsalGeo, new THREE.MeshStandardMaterial({ color: 0x0c2834, roughness: 0.75 }));
+  dorsal.position.set(-0.46, 0.48, 0);
+  dorsal.rotation.z = -0.28;
+  dorsal.userData.whale = true;
+  group.add(dorsal);
+
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x010407, roughness: 0.15, metalness: 0.25 });
+  const glintMat = new THREE.MeshBasicMaterial({ color: 0xd9eeef, transparent: true, opacity: 0.9 });
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.034, 8, 6), eyeMat);
+    eye.position.set(1.73, 0.035, side * 0.383);
+    eye.userData.whale = true;
+    group.add(eye);
+    const glint = new THREE.Mesh(new THREE.SphereGeometry(0.0075, 5, 4), glintMat);
+    glint.position.set(1.748, 0.051, side * 0.400);
+    group.add(glint);
+  }
+
+  // generous, invisible hit volume — makes the tiny whale easy to click
+  const hitbox = new THREE.Mesh(
+    new THREE.SphereGeometry(2.45, 8, 6),
+    new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      colorWrite: false
+    })
+  );
+  hitbox.scale.set(1.06, 0.55, 0.56);
+  hitbox.position.x = 0.05;
+  hitbox.userData.whale = true;
+  group.add(hitbox);
+
+  group.scale.setScalar(0.96);
+  group.userData.flukes = flukes;
+  group.userData.finR = finR;
+  group.userData.finL = finL;
+  return group;
+}
+
+const whale = createWhale();
+scene.add(whale);
+const whalePos = new THREE.Vector3();
+const whalePrev = new THREE.Vector3();
+const whaleVel = new THREE.Vector3();
+
+/* -------------------------------------------------------------------------- */
+/*  Fish schools                                                              */
+/* -------------------------------------------------------------------------- */
+
+function makeFishGeometry() {
+  const positions = [];
+  const indices = [];
+  const rings = [
+    { z: 0.31, rx: 0.004, ry: 0.004 },
+    { z: 0.21, rx: 0.033, ry: 0.045 },
+    { z: 0.04, rx: 0.052, ry: 0.075 },
+    { z: -0.13, rx: 0.024, ry: 0.038 },
+    { z: -0.21, rx: 0.009, ry: 0.017 }
+  ];
+  const radial = 6;
+  for (let i = 0; i < rings.length; i++) {
+    const r = rings[i];
+    for (let j = 0; j < radial; j++) {
+      const a = j / radial * Math.PI * 2;
+      positions.push(Math.cos(a) * r.rx, Math.sin(a) * r.ry, r.z);
+    }
+  }
+  for (let i = 0; i < rings.length - 1; i++) {
+    for (let j = 0; j < radial; j++) {
+      const j2 = (j + 1) % radial;
+      const a = i * radial + j;
+      const b = i * radial + j2;
+      const c = (i + 1) * radial + j;
+      const d = (i + 1) * radial + j2;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  // tail fan
+  const tailBase = positions.length / 3;
+  positions.push(0, 0, -0.40);
+  const tailTop = positions.length / 3;
+  positions.push(0, 0.12, -0.52);
+  const tailBot = positions.length / 3;
+  positions.push(0, -0.12, -0.52);
+  const lastRing = (rings.length - 1) * radial;
+  for (let j = 0; j < radial; j++) {
+    const j2 = (j + 1) % radial;
+    indices.push(tailBase, lastRing + j, lastRing + j2);
+  }
+  indices.push(lastRing + 1, tailTop, tailBot);
+  indices.push(lastRing + 1, lastRing + 4, tailBot);
+  // dorsal fin
+  indices.push(1, 3, 2);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const fishGeo = makeFishGeometry();
+const fishMaterial = new THREE.MeshStandardMaterial({
+  color: 0x78bcc5,
+  roughness: 0.4,
+  metalness: 0.55,
+  envMapIntensity: 0.7,
+  side: THREE.DoubleSide,
+  emissive: 0x06222a,
+  emissiveIntensity: 0.5
+});
+
+const FISH_A_COUNT = isCoarse ? 24 : 38;
+const FISH_B_COUNT = isCoarse ? 17 : 26;
+const schoolA = new THREE.InstancedMesh(fishGeo, fishMaterial, FISH_A_COUNT);
+const schoolB = new THREE.InstancedMesh(fishGeo, fishMaterial.clone(), FISH_B_COUNT);
+for (const school of [schoolA, schoolB]) {
+  school.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  school.frustumCulled = false;
+  scene.add(school);
+}
+schoolB.material.color.set(0x87a9b1);
+schoolB.material.metalness = 0.42;
+
+const fishStates = [];
+function seedFish(mesh, count, schoolIndex) {
+  for (let i = 0; i < count; i++) {
+    fishStates.push({
+      mesh,
+      school: schoolIndex,
+      phase: Math.random() * Math.PI * 2,
+      orbit: 0.78 + Math.random() * 0.34,
+      azimuth: Math.random() * Math.PI * 2,
+      radius: 0.6 + Math.random() * 2.0,
+      y: (Math.random() - 0.5) * 0.56,
+      scale: 0.31 + Math.random() * 0.25,
+      speed: 0.65 + Math.random() * 0.55,
+      wobble: Math.random() * Math.PI * 2,
+      index: i
+    });
+    const c = new THREE.Color().setHSL(0.51 + Math.random() * 0.04, 0.28 + Math.random() * 0.2, 0.55 + Math.random() * 0.2);
+    mesh.setColorAt(i, c);
+  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+seedFish(schoolA, FISH_A_COUNT, 0);
+seedFish(schoolB, FISH_B_COUNT, 1);
+
+const fishMatrix = new THREE.Matrix4();
+const fishQuat = new THREE.Quaternion();
+const fishEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const fishScaleVec = new THREE.Vector3();
+const fishPosVec = new THREE.Vector3();
+
+function updateFish(t) {
+  const centers = [
+    { x: 0.15, y: -3.00, z: -0.55, rx: 2.25, rz: 1.72, speed: 0.28 },
+    { x: -0.1, y: -3.56, z: 0.45, rx: 1.78, rz: 1.28, speed: -0.38 }
+  ];
+
+  for (const f of fishStates) {
+    const c = centers[f.school];
+    const a = f.azimuth + t * c.speed * f.speed;
+    const wob = Math.sin(t * 1.1 * f.speed + f.wobble) * 0.18;
+    fishPosVec.set(
+      c.x + Math.cos(a) * (c.rx * f.orbit) + Math.sin(t * 0.9 + f.phase) * 0.18,
+      c.y + f.y + Math.sin(t * 1.25 + f.phase) * 0.15 + wob,
+      c.z + Math.sin(a * 1.06) * (c.rz * f.orbit) + Math.cos(t * 0.7 + f.phase) * 0.18
+    );
+
+    // tangent direction of the school orbit
+    const vx = -Math.sin(a) * c.rx * c.speed * f.speed;
+    const vz = Math.cos(a * 1.06) * c.rz * c.speed * f.speed;
+    const yaw = Math.atan2(vx, vz);
+    fishEuler.set(Math.sin(t * 1.7 + f.phase) * 0.1, yaw + Math.sin(t * 4.0 + f.phase) * 0.14, Math.sin(t * 1.3 + f.phase) * 0.18);
+    fishQuat.setFromEuler(fishEuler);
+    fishScaleVec.setScalar(f.scale);
+    fishMatrix.compose(fishPosVec, fishQuat, fishScaleVec);
+    f.mesh.setMatrixAt(f.index, fishMatrix);
+  }
+  schoolA.instanceMatrix.needsUpdate = true;
+  schoolB.instanceMatrix.needsUpdate = true;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Rain                                                                      */
+/* -------------------------------------------------------------------------- */
+
+const RAIN_COUNT = isCoarse ? 650 : 1100;
+const rainPositions = new Float32Array(RAIN_COUNT * 6);
+const rainDrops = [];
+const rainGeometry = new THREE.BufferGeometry();
+rainGeometry.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+
+for (let i = 0; i < RAIN_COUNT; i++) {
+  const x = (Math.random() - 0.5) * 24;
+  const z = (Math.random() - 0.5) * 24;
+  const inside = Math.abs(x) < HALF - 0.1 && Math.abs(z) < HALF - 0.1;
+  rainDrops.push({
+    x,
+    z,
+    y: 2 + Math.random() * 16,
+    speed: 7 + Math.random() * 9,
+    len: 0.16 + Math.random() * 0.5,
+    wind: (Math.random() - 0.5) * 0.15,
+    inside,
+    top: inside ? 5.8 : 9.5,
+    bottom: inside ? 4.02 : FLOOR_Y - 0.4
+  });
+}
+
+const rainMaterial = new THREE.LineBasicMaterial({
+  color: 0xb4d0df,
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const rain = new THREE.LineSegments(rainGeometry, rainMaterial);
+rain.frustumCulled = false;
+rain.renderOrder = 9;
+scene.add(rain);
+
+/* -------------------------------------------------------------------------- */
+/*  Lightning                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const boltGroup = new THREE.Group();
+boltGroup.visible = false;
+scene.add(boltGroup);
+const boltGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: glowTexture,
+  color: 0xbcd9f5,
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+}));
+boltGlow.scale.set(10, 16, 1);
+boltGlow.position.set(0, 10, -19);
+boltGroup.add(boltGlow);
+
+let boltLines = [];
+
+function randomBolt() {
+  for (const line of boltLines) {
+    line.geometry.dispose();
+    line.material.dispose();
+    boltGroup.remove(line);
+  }
+  boltLines = [];
+
+  const startX = (Math.random() - 0.5) * 16;
+  const startZ = -16 - Math.random() * 7;
+  const pts = [];
+  let x = startX, y = 21, z = startZ;
+  pts.push(new THREE.Vector3(x, y, z));
+  const segments = 14;
+  for (let i = 0; i < segments; i++) {
+    x += (Math.random() - 0.5) * 2.1;
+    z += (Math.random() - 0.5) * 1.5;
+    y -= 1.1 + Math.random() * 1.4;
+    pts.push(new THREE.Vector3(x, y, z));
+  }
+
+  const lineMat = new THREE.LineBasicMaterial({
+    color: 0xd8ecff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const line = new THREE.Line(geo, lineMat);
+  line.renderOrder = 30;
+  boltGroup.add(line);
+  boltLines.push(line);
+
+  // one fork
+  const forkStart = pts[Math.floor(pts.length * 0.45)].clone();
+  const forkPts = [forkStart];
+  let fx = forkStart.x, fy = forkStart.y, fz = forkStart.z;
+  for (let i = 0; i < 6; i++) {
+    fx += (Math.random() - 0.5) * 2.7;
+    fz += (Math.random() - 0.5) * 1.2;
+    fy -= 0.7 + Math.random() * 1.1;
+    forkPts.push(new THREE.Vector3(fx, fy, fz));
+  }
+  const forkGeo = new THREE.BufferGeometry().setFromPoints(forkPts);
+  const forkMat = lineMat.clone();
+  const fork = new THREE.Line(forkGeo, forkMat);
+  fork.renderOrder = 30;
+  boltGroup.add(fork);
+  boltLines.push(fork);
+
+  boltGlow.position.set(startX, 10, startZ + 0.5);
+  boltGlow.material.opacity = 0;
+}
+
+function triggerLightning() {
+  randomBolt();
+  boltGroup.visible = true;
+  lightningAge = 0;
+  lightningTimer = mix(15, 4.4, smootherstep(storm)) * (0.65 + Math.random() * 0.8);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Underwater particles around the ship / whale                              */
+/* -------------------------------------------------------------------------- */
+
+const sprayUniforms = {
+  uTime: { value: 0 },
+  uStorm: { value: storm },
+  uPixelRatio: { value: renderer.getPixelRatio() },
+  uColor: { value: new THREE.Color(0xcee9ed) }
+};
+const sprayGeo = new THREE.BufferGeometry();
+{
+  const count = 90;
+  const pos = new Float32Array(count * 3);
+  const phase = new Float32Array(count);
+  const seed = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = 0;
+    pos[i * 3 + 1] = 0;
+    pos[i * 3 + 2] = 0;
+    phase[i] = Math.random() * Math.PI * 2;
+    seed[i] = Math.random();
+  }
+  sprayGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  sprayGeo.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+  sprayGeo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+}
+const sprayMat = new THREE.ShaderMaterial({
+  uniforms: sprayUniforms,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: /* glsl */`
+    uniform float uTime;
+    uniform float uStorm;
+    uniform float uPixelRatio;
+    attribute float aPhase;
+    attribute float aSeed;
+    varying float vAlpha;
+    void main(){
+      float cycle = mod(uTime * (0.35 + aSeed * 0.3) + aPhase, 1.0);
+      vec3 p = position;
+      p.y += cycle * (0.2 + aSeed * 0.7) * (0.5 + uStorm);
+      p.x += sin(aPhase * 7.0 + cycle * 4.0) * 0.14;
+      p.z += cos(aPhase * 5.0 + cycle * 3.0) * 0.14;
+      p.y -= cycle * cycle * 0.4;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_PointSize = (1.0 + aSeed * 2.3) * uPixelRatio * (23.0 / max(1.2, -mv.z));
+      gl_Position = projectionMatrix * mv;
+      vAlpha = (1.0 - cycle) * smoothstep(0.05, 0.6, uStorm) * (0.25 + aSeed * 0.75);
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform vec3 uColor;
+    varying float vAlpha;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.05, d) * vAlpha;
+      gl_FragColor = vec4(uColor, a);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }
+  `
+});
+const spray = new THREE.Points(sprayGeo, sprayMat);
+spray.renderOrder = 11;
+spray.frustumCulled = false;
+scene.add(spray);
+
+/* -------------------------------------------------------------------------- */
+/*  Camera flights, picking, UI                                               */
+/* -------------------------------------------------------------------------- */
+
+let flight = null;
+let viewMode = 'hero';
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const pickables = [];
+whale.traverse(o => {
+  if (o.isMesh && o.userData.whale) pickables.push(o);
+});
+
+const hint = document.getElementById('hint');
+if (isCoarse) {
+  hint.innerHTML = '<b>Drag</b> to orbit<span class="sep">/</span><b>Tap the whale</b> to dive';
+}
+let hintTimer = setTimeout(() => hint.classList.add('hidden'), 11000);
+
+function setOrbitForMode(mode) {
+  if (mode === 'underwater') {
+    controls.minDistance = 5.0;
+    controls.maxDistance = 24;
+    controls.maxPolarAngle = 1.78;
+    controls.minPolarAngle = 0.5;
+  } else {
+    controls.minDistance = 8.5;
+    controls.maxDistance = 39;
+    controls.maxPolarAngle = 1.61;
+    controls.minPolarAngle = 0.2;
+  }
+}
+
+function flyTo(position, target, duration, mode, fov) {
+  flight = {
+    start: performance.now(),
+    duration,
+    p0: camera.position.clone(),
+    p1: position.clone(),
+    t0: controls.target.clone(),
+    t1: target.clone(),
+    fov0: camera.fov,
+    fov1: fov,
+    mode
+  };
+  controls.enabled = false;
+}
+
+function underwaterVantage() {
+  // stay on the audience side of the whale, but move to its broadside
+  const heading = whale.rotation.y;
+  const forward = new THREE.Vector3(Math.cos(heading), 0, -Math.sin(heading));
+  const side = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
+  const fromWhale = new THREE.Vector3(
+    camera.position.x - whale.position.x,
+    0,
+    camera.position.z - whale.position.z
+  );
+  if (side.dot(fromWhale) < 0) side.negate();
+
+  const position = whale.position.clone().addScaledVector(side, 10.6 + portraitFactor() * 2.2);
+  position.y = -2.55;
+  const target = whale.position.clone();
+  target.y += 0.14;
+  return { position, target, fov: responsiveFov(39) };
+}
+
+function diveToWhale() {
+  if (viewMode === 'underwater' || flight) return;
+  viewMode = 'underwater';
+  setOrbitForMode('underwater');
+  document.body.classList.add('underwater');
+  hint.classList.add('hidden');
+  const vantage = underwaterVantage();
+  flyTo(vantage.position, vantage.target, 3.15, 'underwater', vantage.fov);
+  weatherDot.style.background = 'rgba(138,183,202,.8)';
+  weatherDot.style.boxShadow = '0 0 8px rgba(138,183,202,.9)';
+}
+
+function resetView() {
+  if (flight) return;
+  viewMode = 'hero';
+  setOrbitForMode('hero');
+  document.body.classList.remove('underwater');
+  const view = heroView();
+  flyTo(view.position, view.target, 2.55, 'hero', view.fov);
+  weatherDot.style.background = 'rgba(244,195,139,.72)';
+  weatherDot.style.boxShadow = '0 0 8px rgba(244,195,139,.8)';
+}
+
+document.getElementById('reset').addEventListener('click', resetView);
+
+let downX = 0, downY = 0, downTime = 0;
+renderer.domElement.addEventListener('pointerdown', e => {
+  downX = e.clientX; downY = e.clientY; downTime = performance.now();
+  pointerActive = true;
+  lastInteraction = performance.now();
+  hint.classList.add('hidden');
+  clearTimeout(hintTimer);
+});
+window.addEventListener('pointerup', () => {
+  pointerActive = false;
+  lastInteraction = performance.now();
+});
+renderer.domElement.addEventListener('wheel', () => {
+  lastInteraction = performance.now();
+}, { passive: true });
+renderer.domElement.addEventListener('pointerup', e => {
+  const dx = e.clientX - downX;
+  const dy = e.clientY - downY;
+  if (Math.hypot(dx, dy) > 7 || performance.now() - downTime > 700) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(pickables, false);
+  if (hits.length > 0) diveToWhale();
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if (e.buttons) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(pickables, false);
+  renderer.domElement.style.cursor = hits.length > 0 ? 'pointer' : 'grab';
+});
+renderer.domElement.addEventListener('pointerleave', () => {
+  renderer.domElement.style.cursor = 'grab';
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Rain update                                                               */
+/* -------------------------------------------------------------------------- */
+
+function updateRain(dt) {
+  const strength = smoothstep(0.12, 0.62, storm);
+  rainMaterial.opacity = strength * 0.28;
+  rain.visible = storm > 0.16;
+  if (!rain.visible) return;
+
+  const wind = (storm - 0.3) * 1.1;
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    const d = rainDrops[i];
+    d.y -= d.speed * (0.45 + storm * 1.3) * dt;
+    if (d.y < d.bottom) {
+      d.y = d.top + Math.random() * (d.inside ? 2.0 : 10.0);
+      d.x = (Math.random() - 0.5) * 24;
+      d.z = (Math.random() - 0.5) * 24;
+      const inside = Math.abs(d.x) < HALF - 0.1 && Math.abs(d.z) < HALF - 0.1;
+      d.inside = inside;
+      d.top = inside ? 5.8 : 9.5;
+      d.bottom = inside ? 4.02 : FLOOR_Y - 0.4;
+    }
+    const slant = d.wind + wind * 0.05;
+    const x0 = d.x;
+    const y0 = d.y;
+    const x1 = d.x + slant * d.len * 3.0;
+    const y1 = d.y - d.len;
+    const idx = i * 6;
+    rainPositions[idx] = x0;
+    rainPositions[idx + 1] = y0;
+    rainPositions[idx + 2] = d.z;
+    rainPositions[idx + 3] = x1;
+    rainPositions[idx + 4] = y1;
+    rainPositions[idx + 5] = d.z;
+  }
+  rainGeometry.attributes.position.needsUpdate = true;
+}
+
+function updateLightning(dt) {
+  if (storm > 0.48) {
+    lightningTimer -= dt;
+    if (lightningTimer <= 0 && lightningAge > 1.3) {
+      triggerLightning();
+    }
+  } else {
+    lightningTimer = mix(17, 7, storm);
+  }
+
+  if (lightningAge < 2.0) {
+    lightningAge += dt;
+    const age = lightningAge;
+    let f = 0;
+    if (age < 0.055) f = 1.0;
+    else if (age < 0.105) f = 0.12;
+    else if (age < 0.17) f = 0.82;
+    else if (age < 0.55) f = 0.82 * (1.0 - (age - 0.17) / 0.38);
+    else f = 0;
+    f *= 0.75 + Math.random() * 0.25;
+    lightningFlash = f;
+
+    boltGroup.visible = f > 0.005;
+    for (const line of boltLines) {
+      line.material.opacity = f * (0.7 + Math.random() * 0.3);
+    }
+    boltGlow.material.opacity = f * 0.34;
+    boltGlow.scale.set(7 + f * 5, 13 + f * 7, 1);
+
+    if (age > 0.75) {
+      boltGroup.visible = false;
+      lightningFlash = 0;
+    }
+  } else {
+    lightningFlash = 0;
+    boltGroup.visible = false;
+  }
+
+  const flashEl = document.getElementById('flash');
+  flashEl.style.opacity = (lightningFlash * 0.42).toFixed(3);
+  lightningLight.intensity = lightningFlash * 10.5;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Weather, uniforms, lights, ship                                           */
+/* -------------------------------------------------------------------------- */
+
+const SUN_DAWN = new THREE.Vector3(-0.62, 0.44, -0.65).normalize();
+const SUN_STORM = new THREE.Vector3(-0.18, 0.6, -0.75).normalize();
+const currentSunDir = new THREE.Vector3();
+
+function updateShip(dt) {
+  const amp = waveAmpScale(storm);
+  const yaw = 0.36 + Math.sin(oceanTime * 0.055) * 0.22 + Math.sin(oceanTime * 0.17) * 0.035;
+  shipState.yaw = yaw;
+
+  const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+  const side = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+  const px = 0.52 + 0.14 * Math.sin(oceanTime * 0.07);
+  const pz = 0.16 + 0.12 * Math.cos(oceanTime * 0.05);
+  const halfLength = 0.48;
+  const halfWidth = 0.26;
+
+  const hC = surfaceHeight(px, pz);
+  const hF = surfaceHeight(px + forward.x * halfLength, pz + forward.z * halfLength);
+  const hA = surfaceHeight(px - forward.x * halfLength, pz - forward.z * halfLength);
+  const hR = surfaceHeight(px + side.x * halfWidth, pz + side.z * halfWidth);
+  const hL = surfaceHeight(px - side.x * halfWidth, pz - side.z * halfWidth);
+
+  // physical-looking lag via a tiny spring
+  const targetHeave = hC + 0.01;
+  const targetPitch = Math.atan2(hA - hF, halfLength * 2) + Math.sin(oceanTime * 1.6) * 0.035 * storm;
+  const targetRoll = Math.atan2(hR - hL, halfWidth * 2);
+
+  const spring = (current, vel, target, k, damp) => {
+    const a = (target - current) * k - vel * damp;
+    vel += a * dt;
+    return [current + vel * dt, vel];
+  };
+
+  [shipState.heave, shipState.heaveVel] = spring(shipState.heave, shipState.heaveVel, targetHeave, 16, 5.2);
+  [shipState.pitch, shipState.pitchVel] = spring(shipState.pitch, shipState.pitchVel, targetPitch, 12, 4.8);
+  [shipState.roll, shipState.rollVel] = spring(shipState.roll, shipState.rollVel, targetRoll, 11, 4.3);
+
+  const t = oceanTime;
+  const extra = (Math.sin(t * 1.33) * 0.075 + Math.sin(t * 2.11 + 1.4) * 0.035 + Math.sin(t * 0.47) * 0.025) * storm;
+  [shipState.extraRoll, shipState.extraRollVel] = spring(shipState.extraRoll, shipState.extraRollVel, extra, 8, 3.8);
+
+  ship.position.set(px, shipState.heave, pz);
+  ship.rotation.order = 'YXZ';
+  ship.rotation.y = yaw;
+  ship.rotation.x = shipState.pitch;
+  ship.rotation.z = shipState.roll + shipState.extraRoll;
+
+  // a little surge and yaw struggle in heavier weather
+  ship.rotation.y += Math.sin(t * 1.07) * 0.018 * storm;
+
+  // send ship position / direction into the water shader for the wake
+  waterUniforms.uShipPos.value.set(px, pz);
+  waterUniforms.uShipDir.value.set(Math.sin(yaw), Math.cos(yaw));
+  waterUniforms.uWake.value = 0.65 + storm * 0.75;
+
+  spray.position.set(px, shipState.heave + 0.02, pz);
+  sprayUniforms.uStorm.value = storm;
+}
+
+function updateWhale(t) {
+  const phase = 0.38 + t * 0.092;
+  whalePrev.copy(whale.position);
+  const x = Math.cos(phase) * 2.35 + Math.sin(t * 0.13) * 0.15;
+  const z = Math.sin(phase * 0.96) * 1.58 + Math.cos(t * 0.11) * 0.12;
+  const y = -1.27 + Math.sin(t * 0.38) * 0.12;
+  whale.position.set(x, y, z);
+  whaleVel.subVectors(whale.position, whalePrev);
+  if (whaleVel.lengthSq() > 0.000001) {
+    const heading = Math.atan2(-whaleVel.z, whaleVel.x);
+    whale.rotation.y = heading;
+    const targetRoll = Math.sin(t * 0.32) * 0.035 + (whaleVel.z * 0.08);
+    whale.rotation.z = mix(whale.rotation.z, targetRoll, 0.02);
+    whale.rotation.x = Math.sin(t * 0.49) * 0.025;
+  }
+  const flukes = whale.userData.flukes;
+  flukes.rotation.z = 0.30 + Math.sin(t * 2.15) * 0.16 + Math.sin(t * 1.1) * 0.04;
+  if (whale.userData.finR) whale.userData.finR.rotation.x = 0.5 + Math.sin(t * 0.7) * 0.055;
+  if (whale.userData.finL) whale.userData.finL.rotation.x = -0.5 + Math.sin(t * 0.7 + 1.0) * 0.055;
+  whalePos.copy(whale.position);
+}
+
+function updateWeatherVisuals(dt) {
+  // smooth transitions toward the slider
+  const ease = 1 - Math.exp(-dt * 0.9);
+  storm += (targetStorm - storm) * ease;
+  if (Math.abs(targetStorm - storm) < 0.0005) storm = targetStorm;
+
+  const amp = waveAmpScale(storm);
+  waterUniforms.uAmpScale.value = amp;
+  waterUniforms.uStorm.value = storm;
+  waterUniforms.uSunIntensity.value = mix(1.02, 0.24, smootherstep(storm));
+  waterUniforms.uFlash.value = lightningFlash;
+  waterUniforms.uSunDir.value.copy(sunDir);
+
+  waterUniforms.uSunColor.value.copy(palette.sun);
+  waterUniforms.uSkyTop.value.copy(palette.skyTop);
+  waterUniforms.uSkyHorizon.value.copy(palette.skyHorizon);
+  waterUniforms.uDeep.value.copy(palette.deep);
+  waterUniforms.uMid.value.copy(palette.mid);
+  waterUniforms.uShallow.value.copy(palette.shallow);
+  waterUniforms.uFoam.value.copy(palette.foam);
+  waterUniforms.uGlow.value.copy(palette.glow);
+
+  volumeUniforms.uStorm.value = storm;
+  volumeUniforms.uMid.value.copy(palette.mid);
+  volumeUniforms.uDeep.value.copy(palette.deep);
+  volumeUniforms.uGlow.value.copy(palette.glow);
+
+  glassUniforms.uStorm.value = storm;
+  glassUniforms.uColor.value.copy(palette.glass);
+  glassUniforms.uFlash.value = lightningFlash;
+
+  skyUniforms.uStorm.value = storm;
+  skyUniforms.uSunColor.value.copy(palette.sun);
+  skyUniforms.uSkyTop.value.copy(palette.skyTop);
+  skyUniforms.uSkyHorizon.value.copy(palette.skyHorizon);
+  skyUniforms.uCloud.value.copy(palette.cloud);
+  skyUniforms.uFlash.value = lightningFlash;
+
+  shaftUniforms.uStorm.value = storm;
+  shaftUniforms.uColor.value.copy(palette.shaft);
+  shaftUniforms.uOpacity.value = mix(0.62, 0.27, smootherstep(storm)) + lightningFlash * 0.24;
+  shaftUniforms.uFlash.value = lightningFlash;
+
+  floorOverlayUniforms.uStorm.value = storm;
+  floorOverlayUniforms.uAccent.value.copy(palette.glow);
+  poolUniforms.uColor.value.copy(palette.glow);
+  poolUniforms.uOpacity.value = mix(0.17, 0.075, storm);
+
+  dustUniforms.uColor.value.copy(palette.foam).lerp(palette.glow, 0.35);
+  dustUniforms.uOpacity.value = mix(0.30, 0.14, storm);
+
+  snowUniforms.uColor.value.copy(palette.glow).lerp(palette.foam, 0.35);
+  snowUniforms.uOpacity.value = mix(0.50, 0.72, storm);
+
+  sprayUniforms.uColor.value.copy(palette.foam);
+
+  // sun / lights
+  currentSunDir.copy(SUN_DAWN).lerp(SUN_STORM, smootherstep(storm)).normalize();
+  sunDir.copy(currentSunDir);
+  sunLight.position.copy(sunDir).multiplyScalar(25);
+  sunLight.color.copy(palette.sun);
+  sunLight.intensity = mix(2.6, 0.42, smootherstep(storm));
+  frontFill.color.copy(palette.underA);
+  frontFill.intensity = mix(0.8, 1.2, storm);
+  stormRim.color.copy(palette.rim);
+  stormRim.intensity = mix(0.3, 1.0, storm);
+
+  underLightA.color.copy(palette.underA).lerp(palette.underB, mix(0.25, 0.65, storm));
+  underLightA.intensity = mix(65, 105, storm) + lightningFlash * 35;
+  underLightB.color.copy(palette.underB);
+  underLightB.intensity = mix(55, 38, storm);
+  deepLight.color.copy(palette.mid).lerp(palette.underA, 0.4);
+  deepLight.intensity = mix(55, 88, storm) + lightningFlash * 25;
+  whaleFill.color.copy(palette.underA).lerp(palette.foam, 0.2);
+  whaleFill.intensity = mix(58, 96, storm) + lightningFlash * 30;
+  hemi.color.copy(palette.skyTop).lerp(palette.underA, 0.5);
+  hemi.groundColor.copy(palette.deep);
+  hemi.intensity = mix(0.46, 0.3, storm);
+
+  edgeMat.color.copy(palette.rim);
+  edgeMat.opacity = mix(0.42, 0.64, storm);
+  nodeMat.color.copy(palette.rim);
+  nodeMat.opacity = mix(0.55, 0.8, storm);
+
+  rainMaterial.color.copy(palette.foam).lerp(palette.rim, 0.65);
+
+  backGlowMaterial.color.copy(palette.sun).lerp(palette.shallow, 0.18);
+  backGlowMaterial.opacity = mix(0.20, 0.05, smootherstep(storm));
+  backGlow.scale.set(mix(30, 24, storm), mix(23, 19, storm), 1);
+  backGlowCoreMaterial.color.copy(palette.sun);
+  backGlowCoreMaterial.opacity = mix(0.26, 0.055, smootherstep(storm));
+  backGlowCore.scale.set(mix(10, 7, storm), mix(8, 6, storm), 1);
+
+  skyUniforms.uSunDir.value.copy(sunDir);
+  waterUniforms.uSunDir.value.copy(sunDir);
+
+  rainMaterial.opacity = smoothstep(0.12, 0.62, storm) * 0.28;
+
+  renderer.toneMappingExposure = mix(1.08, 0.94, storm) + lightningFlash * 0.22;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Main loop                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const clock = new THREE.Clock();
+let firstFrame = true;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.046);
+  elapsed += dt;
+
+  updatePalette(storm);
+  updateWeatherVisuals(dt);
+
+  const speedFactor = mix(0.78, 1.55, smootherstep(storm));
+  oceanTime += dt * speedFactor;
+  waterUniforms.uTime.value = oceanTime;
+  volumeUniforms.uTime.value = oceanTime;
+  skyUniforms.uTime.value = elapsed;
+  glassUniforms.uTime.value = elapsed;
+  shaftUniforms.uTime.value = elapsed;
+  snowUniforms.uTime.value = elapsed;
+  dustUniforms.uTime.value = elapsed;
+  sprayUniforms.uTime.value = elapsed;
+  floorOverlayUniforms.uTime.value = elapsed;
+  poolUniforms.uTime.value = elapsed;
+
+  updateShip(dt);
+  updateWhale(oceanTime);
+  updateFish(elapsed);
+  updateRain(dt);
+  updateLightning(dt);
+
+  // While the visitor is idle below the waterline, let the camera drift with the whale.
+  if (viewMode === 'underwater' && !flight && !pointerActive &&
+      performance.now() - lastInteraction > 1600) {
+    const follow = new THREE.Vector3(
+      whale.position.x - controls.target.x,
+      whale.position.y + 0.14 - controls.target.y,
+      whale.position.z - controls.target.z
+    );
+    follow.multiplyScalar(1 - Math.exp(-dt * 0.45));
+    controls.target.add(follow);
+    camera.position.add(follow);
+  }
+
+  // shafts sway very slightly
+  shafts.children.forEach((g, i) => {
+    g.rotation.y = g.userData.baseRot + Math.sin(elapsed * 0.07 + i * 1.7) * 0.045;
+    g.rotation.z = g.userData.tilt + Math.sin(elapsed * 0.09 + i) * 0.02;
+  });
+
+  // camera flight
+  if (flight) {
+    const raw = clamp((performance.now() - flight.start) / (flight.duration * 1000), 0, 1);
+    const k = raw < 0.5 ? 4 * raw * raw * raw : 1 - Math.pow(-2 * raw + 2, 3) / 2;
+    camera.position.lerpVectors(flight.p0, flight.p1, k);
+    controls.target.lerpVectors(flight.t0, flight.t1, k);
+    camera.fov = mix(flight.fov0, flight.fov1, k);
+    camera.updateProjectionMatrix();
+    camera.lookAt(controls.target);
+    if (raw >= 1) {
+      controls.enabled = true;
+      controls.update();
+      flight = null;
+    }
+  } else {
+    controls.update();
+  }
+
+  // keep camera above the gallery floor and out of the glass edges
+  if (camera.position.y < FLOOR_Y + 0.45) camera.position.y = FLOOR_Y + 0.45;
+
+  renderer.render(scene, camera);
+
+  if (firstFrame) {
+    firstFrame = false;
+    requestAnimationFrame(() => document.getElementById('veil').classList.add('lifted'));
+  }
+}
+
+/* initial positioning of dynamic elements */
+updatePalette(storm);
+updateWeatherVisuals(0.016);
+updateWhale(oceanTime);
+updateFish(elapsed);
+updateShip(0.016);
+updateRain(0.016);
+
+/* responsiveness */
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  if (!flight) {
+    camera.fov = viewMode === 'underwater' ? responsiveFov(39) : responsiveFov(HERO.fov);
+  }
+  camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isCoarse ? 1.5 : 1.85));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  dustUniforms.uPixelRatio.value = renderer.getPixelRatio();
+  snowUniforms.uPixelRatio.value = renderer.getPixelRatio();
+  sprayUniforms.uPixelRatio.value = renderer.getPixelRatio();
+});
+
+animate();
+</script>
+</body>
+</html>
